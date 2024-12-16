@@ -86,7 +86,7 @@ jobs:
         working-directory: .
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           path: ${{ env.FLOW_FOLDER }}
 
@@ -99,7 +99,7 @@ jobs:
           ini-values: date.timezone="Africa/Tunis", opcache.fast_shutdown=0, apc.enable_cli=on
 
       - name: Checkout development distribution
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: neos/flow-development-distribution
           ref: ${{ env.FLOW_TARGET_VERSION }}
@@ -116,7 +116,7 @@ jobs:
 
       - name: Cache Composer packages
         id: composer-cache
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/composer
