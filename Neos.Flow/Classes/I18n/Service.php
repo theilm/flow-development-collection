@@ -83,8 +83,10 @@ class Service
         $this->configuration = new Configuration($this->settings['defaultLocale']);
         $this->configuration->setFallbackRule($this->settings['fallbackRule']);
 
-        if ($this->cache->has('availableLocales')) {
-            $this->localeCollection = $this->cache->get('availableLocales');
+        $cachedCollection = $this->cache->get('availableLocales');
+
+        if ($cachedCollection !== false) {
+            $this->localeCollection = $cachedCollection;
         } elseif (isset($this->settings['availableLocales']) && !empty($this->settings['availableLocales'])) {
             $this->generateAvailableLocalesCollectionFromSettings();
             $this->cache->set('availableLocales', $this->localeCollection);
@@ -124,7 +126,7 @@ class Service
      * @see Configuration::setFallbackRule()
      * @api
      */
-    public function getLocalizedFilename($pathAndFilename, Locale $locale = null, $strict = false)
+    public function getLocalizedFilename($pathAndFilename, ?Locale $locale = null, $strict = false)
     {
         if ($locale === null) {
             $locale = $this->configuration->getCurrentLocale();
@@ -177,7 +179,7 @@ class Service
      * @see Configuration::setFallbackRule()
      * @api
      */
-    public function getXliffFilenameAndPath($path, $sourceName, Locale $locale = null)
+    public function getXliffFilenameAndPath($path, $sourceName, ?Locale $locale = null)
     {
         if ($locale === null) {
             $locale = $this->configuration->getCurrentLocale();

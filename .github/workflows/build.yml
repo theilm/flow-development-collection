@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php-versions: ['8.0', '8.1', '8.2', '8.3']
+        php-versions: ['8.0', '8.1', '8.2', '8.3', '8.4']
         # see https://mariadb.com/kb/en/mariadb-server-release-dates/
         # this should be a current release, e.g. the LTS version
         mariadb-versions: ['10.6']
@@ -75,7 +75,7 @@ jobs:
         working-directory: .
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           path: ${{ env.FLOW_FOLDER }}
 
@@ -106,7 +106,7 @@ jobs:
           mysql root password: 'neos'
 
       - name: Checkout development distribution
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: neos/flow-development-distribution
           ref: ${{ env.FLOW_TARGET_VERSION }}
@@ -123,7 +123,7 @@ jobs:
 
       - name: Cache Composer packages
         id: composer-cache
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/composer

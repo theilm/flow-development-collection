@@ -159,18 +159,18 @@ class UriBuilder
     /**
      * Specifies the format of the target (e.g. "html" or "xml")
      *
-     * @param string $format (e.g. "html" or "xml"), will be transformed to lowercase!
+     * @param string|null $format (e.g. "html" or "xml"), will be transformed to lowercase!
      * @return UriBuilder the current UriBuilder to allow method chaining
      * @api
      */
     public function setFormat($format)
     {
-        $this->format = strtolower($format);
+        $this->format = $format !== null ? strtolower($format) : null;
         return $this;
     }
 
     /**
-     * @return string
+     * @return string|null
      * @api
      */
     public function getFormat()
@@ -289,7 +289,7 @@ class UriBuilder
      * @throws Exception\MissingActionNameException if $actionName parameter is empty
      * @throws \Neos\Flow\Http\Exception
      */
-    public function uriFor(string $actionName, array $controllerArguments = [], string $controllerName = null, string $packageKey = null, string $subPackageKey = null)
+    public function uriFor(string $actionName, array $controllerArguments = [], ?string $controllerName = null, ?string $packageKey = null, ?string $subPackageKey = null)
     {
         if (empty($actionName)) {
             throw new Exception\MissingActionNameException('The URI Builder could not build a URI linking to an action controller because no action name was specified. Please check the stack trace to see which code or template was requesting the link and check the arguments passed to the URI Builder.', 1354629891);

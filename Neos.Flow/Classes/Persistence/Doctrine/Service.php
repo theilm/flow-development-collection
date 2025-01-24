@@ -32,7 +32,6 @@ use Doctrine\Migrations\Metadata\AvailableMigrationsList;
 use Doctrine\Migrations\Metadata\ExecutedMigration;
 use Doctrine\Migrations\Metadata\ExecutedMigrationsList;
 use Doctrine\Migrations\MigratorConfiguration;
-use Doctrine\Migrations\Tools\Console\ConsoleLogger;
 use Doctrine\Migrations\Tools\Console\Exception\InvalidOptionUsage;
 use Doctrine\Migrations\Tools\Console\Exception\VersionAlreadyExists;
 use Doctrine\Migrations\Tools\Console\Exception\VersionDoesNotExist;
@@ -54,6 +53,7 @@ use Neos\Utility\Files;
 use Neos\Utility\ObjectAccess;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Formatter\OutputFormatter;
+use Symfony\Component\Console\Logger\ConsoleLogger;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -196,7 +196,7 @@ class Service
      * @param int|null $maxResult
      * @return mixed
      */
-    public function runDql(string $dql, int $hydrationMode = \Doctrine\ORM\Query::HYDRATE_OBJECT, int $firstResult = null, int $maxResult = null)
+    public function runDql(string $dql, int $hydrationMode = \Doctrine\ORM\Query::HYDRATE_OBJECT, ?int $firstResult = null, ?int $maxResult = null)
     {
         $query = $this->entityManager->createQuery($dql);
         if ($firstResult !== null) {
@@ -306,7 +306,7 @@ class Service
      * @return string
      * @throws DBALException
      */
-    public function executeMigrations(string $version = 'latest', string $outputPathAndFilename = null, $dryRun = false, $quiet = false): string
+    public function executeMigrations(string $version = 'latest', ?string $outputPathAndFilename = null, $dryRun = false, $quiet = false): string
     {
         $this->initializeMetadataStorage();
 
@@ -413,7 +413,7 @@ class Service
      * @return string
      * @throws DBALException
      */
-    public function executeMigration(string $version, string $direction = 'up', string $outputPathAndFilename = null, bool $dryRun = false): string
+    public function executeMigration(string $version, string $direction = 'up', ?string $outputPathAndFilename = null, bool $dryRun = false): string
     {
         $this->initializeMetadataStorage();
 
@@ -604,7 +604,7 @@ class Service
      * @return array Path to the new file
      * @throws DBALException
      */
-    public function generateMigration(bool $diffAgainstCurrent = true, string $filterExpression = null): array
+    public function generateMigration(bool $diffAgainstCurrent = true, ?string $filterExpression = null): array
     {
         $fqcn = $this->getDependencyFactory()->getClassNameGenerator()->generateClassName(self::DOCTRINE_MIGRATIONSNAMESPACE);
 
