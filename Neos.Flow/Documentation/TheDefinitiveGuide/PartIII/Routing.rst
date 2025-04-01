@@ -58,7 +58,7 @@ But let's start with an easy example:
 	``name`` is optional, but it's recommended to set a name for all routes to make debugging
 	easier.
 
-If you insert these lines at the beginning of the file ``Configurations/Routes.yaml``,
+If you insert these lines at the beginning of the file ``Configuration/Routes.yaml``,
 the ``indexAction`` of the ``StandardController`` in your *My.Demo* package will be called
 when you open up the homepage of your Flow installation (``http://localhost/``).
 
@@ -729,9 +729,65 @@ two more options you can use:
 With ``suffix`` you can specify a custom filename suffix for the SubRoute. The ``variables`` option allows you to
 specify placeholders in the SubRoutes (see `Nested Subroutes`_).
 
+It also is possible to specify a `providerFactory` and (optional) `providerOptions` to generate the subroutes via the
+`Neos\Flow\Mvc\Routing\RoutesProviderFactoryInterface` and the ``Neos\Flow\Mvc\Routing\RoutesProviderInterface`.
+
+.. code-block:: yaml
+
+  Neos:
+    Flow:
+      mvc:
+        routes:
+          Vendor.Example.attributes:
+            position: 'before Neos.Neos'
+            providerFactory: \Neos\Flow\Mvc\Routing\AttributeRoutesProviderFactory
+            providerOptions:
+              classNames:
+                - Vendor\Example\Controller\ExampleController
+
 .. tip::
 
 	You can use the ``flow:routing:list`` command to list all routes which are currently active, see `CLI`_
+
+Subroutes from Attributes
+-------------------------
+
+The ``Flow\Route`` attribute allows to define routes directly on the affected method.
+(Currently only ActionController are supported https://github.com/neos/flow-development-collection/issues/3335)
+
+.. code-block:: php
+
+  use Neos\Flow\Mvc\Controller\ActionController;
+  use Neos\Flow\Annotations as Flow;
+
+  class ExampleController extends ActionController
+  {
+      #[Flow\Route(uriPattern:'my/path', httpMethods: ['GET'])]
+      public function someAction(): void
+      {
+      }
+
+      #[Flow\Route(uriPattern:'my/other/b-path', defaults: ['test' => 'b'])]
+      #[Flow\Route(uriPattern:'my/other/c-path', defaults: ['test' => 'c'])]
+      public function otherAction(string $test): void
+      {
+      }
+  }
+
+In order to make attribute routes discoverable and to specify their order relative to explicitly configured routes, the `providerFactory` has to be specified in Setting `Neos.Flow.mvc.routes`:
+
+.. code-block:: yaml
+
+  Neos:
+    Flow:
+      mvc:
+        routes:
+          Vendor.Example.attributes:
+            position: 'before Neos.Neos'
+            providerFactory: \Neos\Flow\Mvc\Routing\AttributeRoutesProviderFactory
+            providerOptions:
+              classNames:
+                - Vendor\Example\Controller\*
 
 Route Loading Order and the Flow Application Context
 ====================================================
@@ -752,6 +808,24 @@ You can do so by using the following configuration in your `Caches.yaml`:
 	  backend: Neos\Cache\Backend\NullBackend
 	Flow_Mvc_Routing_Resolve:
 	  backend: Neos\Cache\Backend\NullBackend
+
+By defaults all cache items in the routing caches use the lifetime specified by the route parts wich commonly is
+null (never expire). Route parts should set this value if items are known to not exist forever.
+
+In addition the `cache` section of the routing configuration allows to specify a `lifetime` (int|null) and tags (string[])
+that once set are merged with the respective values from the routing result parts.
+
+.. code-block:: yaml
+
+  -
+    uriPattern: 'some/path'
+    ...
+    cache:
+      # lifetime for the cache items if no route part specifies a lower value
+      lifetime: 86400
+      # cache tags for the cache items that are merged with the tags from the route parts
+      tags: ['special']
+
 
 Also it can be handy to be able to flush caches for certain routes programmatically so that they can be
 regenerated. This is useful for example to update all related routes when an entity was renamed.

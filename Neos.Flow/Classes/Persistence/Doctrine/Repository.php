@@ -13,10 +13,6 @@ namespace Neos\Flow\Persistence\Doctrine;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\EntityRepository;
-use Doctrine\ORM\Internal\Hydration\IterableResult;
-use Doctrine\ORM\OptimisticLockException;
-use Doctrine\ORM\ORMException;
-use Doctrine\ORM\TransactionRequiredException;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\Mapping\ClassMetadata;
 use Neos\Flow\Annotations as Flow;
@@ -49,8 +45,7 @@ abstract class Repository extends EntityRepository implements RepositoryInterfac
      * Warning: if you think you want to set this,
      * look at RepositoryInterface::ENTITY_CLASSNAME first!
      *
-     * @psalm-var class-string
-     * @var string
+     * @var class-string
      */
     protected $objectType;
 
@@ -65,15 +60,15 @@ abstract class Repository extends EntityRepository implements RepositoryInterfac
      * @param EntityManagerInterface $entityManager The EntityManager to use.
      * @param ClassMetadata|null $classMetadata The class descriptor.
      */
-    public function __construct(EntityManagerInterface $entityManager, ClassMetadata $classMetadata = null)
+    public function __construct(EntityManagerInterface $entityManager, ?ClassMetadata $classMetadata = null)
     {
         if ($classMetadata === null) {
-            /** @psalm-var class-string $objectType */
             if (defined('static::ENTITY_CLASSNAME') === false) {
                 $objectType = preg_replace(['/\\\Repository\\\/', '/Repository$/'], ['\\Model\\', ''], get_class($this));
             } else {
                 $objectType = static::ENTITY_CLASSNAME;
             }
+            /** @var class-string $objectType */
             $this->objectType = $objectType;
             $classMetadata = $entityManager->getClassMetadata($this->objectType);
         }
@@ -98,7 +93,6 @@ abstract class Repository extends EntityRepository implements RepositoryInterfac
      * @param object $object The object to add
      * @return void
      * @throws IllegalObjectTypeException
-     * @throws ORMException
      * @api
      */
     public function add($object): void
@@ -116,7 +110,6 @@ abstract class Repository extends EntityRepository implements RepositoryInterfac
      * @param object $object The object to remove
      * @return void
      * @throws IllegalObjectTypeException
-     * @throws ORMException
      * @api
      */
     public function remove($object): void
@@ -131,6 +124,7 @@ abstract class Repository extends EntityRepository implements RepositoryInterfac
     /**
      * Finds all entities in the repository.
      *
+     * @phpstan-ignore-next-line we don't satisfy the contract of doctrines repository as we don't return a simple array.
      * @return QueryResultInterface The query result
      * @api
      */
@@ -142,39 +136,16 @@ abstract class Repository extends EntityRepository implements RepositoryInterfac
     /**
      * Find all objects and return an IterableResult
      *
-     * @return IterableResult
+     * @return iterable
      */
-    public function findAllIterator(): IterableResult
+    public function findAllIterator(): iterable
     {
         /** @var QueryBuilder $queryBuilder */
         $queryBuilder = $this->entityManager->createQueryBuilder();
         return $queryBuilder
             ->select('entity')
             ->from($this->getEntityClassName(), 'entity')
-            ->getQuery()->iterate();
-    }
-
-    /**
-     * Iterate over an IterableResult and return a Generator
-     *
-     * This method is useful for batch processing a huge result set.
-     *
-     * @param IterableResult $iterator
-     * @param callable|null $callback
-     * @return \Generator
-     */
-    public function iterate(IterableResult $iterator, callable $callback = null): ?\Generator
-    {
-        $iteration = 0;
-        foreach ($iterator as $object) {
-            $object = current($object);
-            yield $object;
-            if ($callback !== null) {
-                $callback($iteration, $object);
-            }
-
-            $iteration++;
-        }
+            ->getQuery()->toIterable();
     }
 
     /**
@@ -182,9 +153,6 @@ abstract class Repository extends EntityRepository implements RepositoryInterfac
      *
      * @param mixed $identifier The identifier of the object to find
      * @return object|null The matching object if found, otherwise NULL
-     * @throws ORMException
-     * @throws OptimisticLockException
-     * @throws TransactionRequiredException
      * @api
      */
     public function findByIdentifier($identifier)
@@ -237,7 +205,6 @@ abstract class Repository extends EntityRepository implements RepositoryInterfac
      *
      * @return void
      * @throws IllegalObjectTypeException
-     * @throws ORMException
      * @todo maybe use DQL here, would be much more performant
      * @api
      */

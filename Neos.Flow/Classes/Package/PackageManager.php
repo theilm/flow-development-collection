@@ -15,7 +15,6 @@ use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Composer\Exception\InvalidConfigurationException;
 use Neos\Flow\Composer\ComposerUtility;
 use Neos\Flow\Core\Bootstrap;
-use Neos\Flow\Reflection\ReflectionService;
 use Neos\Flow\SignalSlot\Dispatcher;
 use Neos\Flow\SignalSlot\Exception\InvalidSlotException;
 use Neos\Utility\Exception\FilesException;
@@ -68,7 +67,7 @@ class PackageManager
     /**
      * A translation table between lower cased and upper camel cased package keys
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $packageKeys = [];
 
@@ -109,12 +108,15 @@ class PackageManager
     protected $flowPackages = [];
 
     /**
+     * Inject settings into the package manager. Has to be called explicitly on object initialization as
+     * the package manager subpackage is excluded from proxy class building.
+     *
      * @param array $settings
      * @return void
      */
     public function injectSettings(array $settings): void
     {
-        $this->settings = $settings['package'];
+        $this->settings = $settings['package'] ?? [];
     }
 
     /**
@@ -205,7 +207,7 @@ class PackageManager
             throw new Exception\UnknownPackageException('Package "' . $packageKey . '" is not available. Please check if the package exists and that the package key is correct (package keys are case sensitive).', 1166546734);
         }
 
-        return $this->packages[$packageKey];
+        return $this->packages[$this->getCaseSensitivePackageKey($packageKey)];
     }
 
     /**
@@ -221,85 +223,33 @@ class PackageManager
     }
 
     /**
-     * Returns an array of PackageInterface objects of all frozen packages.
-     * A frozen package is not considered by file monitoring and provides some
-     * precompiled reflection data in order to improve performance.
-     *
-     * @return array<PackageInterface>
-     */
-    public function getFrozenPackages(): array
-    {
-        $frozenPackages = [];
-        if ($this->bootstrap->getContext()->isDevelopment()) {
-            /** @var PackageInterface $package */
-            foreach ($this->packages as $packageKey => $package) {
-                if (isset($this->packageStatesConfiguration['packages'][$package->getComposerName()]['frozen']) &&
-                    $this->packageStatesConfiguration['packages'][$package->getComposerName()]['frozen'] === true
-                ) {
-                    $frozenPackages[$packageKey] = $package;
-                }
-            }
-        }
-
-        return $frozenPackages;
-    }
-
-    /**
      * Returns an array of PackageInterface objects of all packages that match
      * the given package state, path, and type filters. All three filters must match, if given.
      *
      * @param string $packageState defaults to available
-     * @param string $packagePath DEPRECATED since Flow 5.0
      * @param string $packageType
      *
      * @return array<PackageInterface>
      * @throws Exception\InvalidPackageStateException
      * @api
      */
-    public function getFilteredPackages($packageState = 'available', $packagePath = null, $packageType = null): array
+    public function getFilteredPackages($packageState = 'available', $packageType = null): array
     {
         switch (strtolower($packageState)) {
             case 'available':
                 $packages = $this->getAvailablePackages();
                 break;
             case 'frozen':
-                $packages = $this->getFrozenPackages();
-                break;
+                throw new Exception\InvalidPackageStateException('The package state "frozen" is has been removed', 1739462316);
             default:
                 throw new Exception\InvalidPackageStateException('The package state "' . $packageState . '" is invalid', 1372458274);
         }
 
-        if ($packagePath !== null) {
-            $packages = $this->filterPackagesByPath($packages, $packagePath);
-        }
         if ($packageType !== null) {
             $packages = $this->filterPackagesByType($packages, $packageType);
         }
 
         return $packages;
-    }
-
-    /**
-     * Returns an array of PackageInterface objects in the given array of packages
-     * that are in the specified Package Path
-     *
-     * @param array $packages Array of PackageInterface to be filtered
-     * @param string $filterPath Filter out anything that's not in this path
-     * @return array<PackageInterface>
-     */
-    protected function filterPackagesByPath($packages, $filterPath): array
-    {
-        $filteredPackages = [];
-        /** @var $package Package */
-        foreach ($packages as $package) {
-            $packagePath = substr($package->getPackagePath(), strlen($this->packagesBasePath));
-            $packageGroup = substr($packagePath, 0, strpos($packagePath, '/'));
-            if ($packageGroup === $filterPath) {
-                $filteredPackages[$package->getPackageKey()] = $package;
-            }
-        }
-
-        return $filteredPackages;
     }
 
     /**
@@ -313,7 +263,6 @@ class PackageManager
     protected function filterPackagesByType($packages, $packageType): array
     {
         $filteredPackages = [];
-        /** @var $package Package */
         foreach ($packages as $package) {
             if ($package->getComposerManifest('type') === $packageType) {
                 $filteredPackages[$package->getPackageKey()] = $package;
@@ -341,11 +290,9 @@ class PackageManager
      */
     public function createPackage($packageKey, array $manifest = [], $packagesPath = null): PackageInterface
     {
-        if (!$this->isPackageKeyValid($packageKey)) {
-            throw new Exception\InvalidPackageKeyException('The package key "' . $packageKey . '" is invalid', 1220722210);
-        }
-        if ($this->isPackageAvailable($packageKey)) {
-            throw new Exception\PackageKeyAlreadyExistsException('The package key "' . $packageKey . '" already exists', 1220722873);
+        $packageKey = FlowPackageKey::fromString($packageKey);
+        if ($this->isPackageAvailable($packageKey->value)) {
+            throw new Exception\PackageKeyAlreadyExistsException('The package key "' . $packageKey->value . '" already exists', 1220722873);
         }
         if (!isset($manifest['type'])) {
             $manifest['type'] = PackageInterface::DEFAULT_COMPOSER_TYPE;
@@ -377,7 +324,7 @@ class PackageManager
             $packagesPath = Files::getUnixStylePath(Files::concatenatePaths([$this->packagesBasePath, $packagesPath]));
         }
 
-        $packagePath = Files::concatenatePaths([$packagesPath, $packageKey]) . '/';
+        $packagePath = Files::concatenatePaths([$packagesPath, $packageKey->value]) . '/';
         Files::createDirectoryRecursively($packagePath);
 
         foreach (
@@ -397,7 +344,8 @@ class PackageManager
             $composerRequireArguments = new ArrayInput([
                 'command' => 'require',
                 'packages' => [$manifest['name'] . ' @dev'],
-                '--working-dir' => FLOW_PATH_ROOT
+                '--working-dir' => FLOW_PATH_ROOT,
+                '--quiet'
             ]);
 
             $composerApplication = new ComposerApplication();
@@ -412,118 +360,12 @@ class PackageManager
         $refreshedPackageStatesConfiguration = $this->rescanPackages();
         $this->packageStatesConfiguration = $refreshedPackageStatesConfiguration;
         $this->registerPackageFromStateConfiguration($manifest['name'], $this->packageStatesConfiguration['packages'][$manifest['name']]);
-        $package = $this->packages[$packageKey];
+        $package = $this->packages[$packageKey->value];
         if ($package instanceof FlowPackageInterface) {
-            $this->flowPackages[$packageKey] = $package;
+            $this->flowPackages[$packageKey->value] = $package;
         }
 
         return $package;
-    }
-
-    /**
-     * Moves a package from one path to another.
-     *
-     * @param string $fromAbsolutePath
-     * @param string $toAbsolutePath
-     * @return void
-     * @throws FilesException
-     */
-    protected function movePackage($fromAbsolutePath, $toAbsolutePath): void
-    {
-        Files::createDirectoryRecursively($toAbsolutePath);
-        Files::copyDirectoryRecursively($fromAbsolutePath, $toAbsolutePath, false, true);
-        Files::removeDirectoryRecursively($fromAbsolutePath);
-    }
-
-    /**
-     * Freezes a package
-     *
-     * @param string $packageKey The package to freeze
-     * @return void
-     * @throws Exception\PackageStatesFileNotWritableException
-     * @throws Exception\UnknownPackageException
-     * @throws \Neos\Flow\Exception
-     * @throws FilesException
-     */
-    public function freezePackage($packageKey): void
-    {
-        if (!$this->bootstrap->getContext()->isDevelopment()) {
-            throw new \LogicException('Package freezing is only supported in Development context.', 1338810870);
-        }
-
-        if (!$this->isPackageAvailable($packageKey)) {
-            throw new Exception\UnknownPackageException('Package "' . $packageKey . '" is not available.', 1331715956);
-        }
-        if ($this->isPackageFrozen($packageKey)) {
-            return;
-        }
-
-        $package = $this->packages[$packageKey];
-        $this->bootstrap->getObjectManager()->get(ReflectionService::class)->freezePackageReflection($packageKey);
-
-        $this->packageStatesConfiguration['packages'][$package->getComposerName()]['frozen'] = true;
-        $this->savePackageStates($this->packageStatesConfiguration);
-    }
-
-    /**
-     * Tells if a package is frozen
-     *
-     * @param string $packageKey The package to check
-     * @return boolean
-     */
-    public function isPackageFrozen($packageKey): bool
-    {
-        if (!isset($this->packages[$packageKey])) {
-            return false;
-        }
-        $composerName = $this->packages[$packageKey]->getComposerName();
-
-        return (
-            $this->bootstrap->getContext()->isDevelopment()
-            && isset($this->packageStatesConfiguration['packages'][$composerName]['frozen'])
-            && $this->packageStatesConfiguration['packages'][$composerName]['frozen'] === true
-        );
-    }
-
-    /**
-     * Unfreezes a package
-     *
-     * @param string $packageKey The package to unfreeze
-     * @return void
-     * @throws Exception\PackageStatesFileNotWritableException
-     * @throws \Neos\Flow\Exception
-     * @throws FilesException
-     */
-    public function unfreezePackage($packageKey): void
-    {
-        if (!$this->isPackageFrozen($packageKey)) {
-            return;
-        }
-        if (!isset($this->packages[$packageKey])) {
-            return;
-        }
-        $composerName = $this->packages[$packageKey]->getComposerName();
-
-        $this->bootstrap->getObjectManager()->get(ReflectionService::class)->unfreezePackageReflection($packageKey);
-
-        unset($this->packageStatesConfiguration['packages'][$composerName]['frozen']);
-        $this->savePackageStates($this->packageStatesConfiguration);
-    }
-
-    /**
-     * Refreezes a package
-     *
-     * @param string $packageKey The package to refreeze
-     * @return void
-     * @throws \Neos\Flow\Exception
-     */
-    public function refreezePackage($packageKey): void
-    {
-        if (!$this->isPackageFrozen($packageKey)) {
-            return;
-        }
-
-        $this->bootstrap->getObjectManager()->get(ReflectionService::class)->unfreezePackageReflection($packageKey);
     }
 
     /**
@@ -593,8 +435,20 @@ class PackageManager
     protected function scanAvailablePackages(): array
     {
         $newPackageStatesConfiguration = ['packages' => []];
-        foreach ($this->findComposerPackagesInPath($this->packagesBasePath) as $packagePath) {
+
+        $packages = new \AppendIterator();
+        $packages->append(new \NoRewindIterator(self::findComposerPackagesInPath($this->packagesBasePath)));
+
+        foreach ($packages as $packagePath) {
             $composerManifest = ComposerUtility::getComposerManifest($packagePath);
+
+            if (isset($composerManifest['type']) && $composerManifest['type'] === 'neos-package-collection') {
+                // the package type "neos-package-collection" indicates a composer package that joins several "flow" packages together.
+                // continue traversal inside the package and append the nested generator to the $packages.
+                $packages->append(new \NoRewindIterator(self::findComposerPackagesInPath($packagePath)));
+                continue;
+            }
+
             if (!isset($composerManifest['name'])) {
                 throw new InvalidConfigurationException(sprintf('A package composer.json was found at "%s" that contained no "name".', $packagePath), 1445933572);
             }
@@ -604,8 +458,8 @@ class PackageManager
                 continue;
             }
 
-            $packageKey = $this->getPackageKeyFromManifest($composerManifest, $packagePath);
-            $this->composerNameToPackageKeyMap[strtolower($composerManifest['name'])] = $packageKey;
+            $packageKey = FlowPackageKey::deriveFromManifestOrPath($composerManifest, $packagePath);
+            $this->composerNameToPackageKeyMap[strtolower($composerManifest['name'])] = $packageKey->value;
 
             $packageConfiguration = $this->preparePackageStateConfiguration($packageKey, $packagePath, $composerManifest);
             if (isset($newPackageStatesConfiguration['packages'][$composerManifest['name']])) {
@@ -627,58 +481,40 @@ class PackageManager
     }
 
     /**
-     * Recursively traverses directories from the given starting points and returns all folder paths that contain a composer.json and
-     * which does NOT have the key "extra.neos.is-merged-repository" set, as that indicates a composer package that joins several "real" packages together.
-     * In case a "is-merged-repository" is found the traversal continues inside.
-     *
-     * @param string $startingDirectory
-     * @return \Generator
+     * Traverses directories recursively from the given starting point and yields folder paths, who contain a composer.json.
+     * When a composer.json was found, traversing into lower directories is stopped.
      */
-    protected function findComposerPackagesInPath($startingDirectory): ?\Generator
+    protected function findComposerPackagesInPath(string $startingDirectory): \Generator
     {
-        $directories = [$startingDirectory];
-        while ($directories !== []) {
-            $currentDirectory = array_pop($directories);
-            if ($handle = opendir($currentDirectory)) {
-                while (false !== ($filename = readdir($handle))) {
-                    if (strpos($filename, '.') === 0) {
-                        continue;
-                    }
-                    $pathAndFilename = $currentDirectory . $filename;
-                    if (is_dir($pathAndFilename)) {
-                        $potentialPackageDirectory = $pathAndFilename . '/';
-                        if (is_file($potentialPackageDirectory . 'composer.json')) {
-                            $composerManifest = ComposerUtility::getComposerManifest($potentialPackageDirectory);
-                            // TODO: Maybe get rid of magic string "neos-package-collection" by fetching collection package types from outside.
-                            if (isset($composerManifest['type']) && $composerManifest['type'] === 'neos-package-collection') {
-                                $directories[] = $potentialPackageDirectory;
-                                continue;
-                            }
-                            yield $potentialPackageDirectory;
-                        } else {
-                            $directories[] = $potentialPackageDirectory;
-                        }
-                    }
-                }
-                closedir($handle);
+        $directories = new \DirectoryIterator($startingDirectory);
+        /** @var \DirectoryIterator $fileInfo */
+        foreach ($directories as $fileInfo) {
+            if ($fileInfo->isDot()) {
+                continue;
             }
+            if ($fileInfo->isDir() === false) {
+                continue;
+            }
+            $potentialPackageDirectory = $fileInfo->getPathname() . '/';
+            if (is_file($potentialPackageDirectory . 'composer.json') === false) {
+                // no composer.json was found - search recursive for a composer.json
+                yield from self::findComposerPackagesInPath($potentialPackageDirectory);
+                continue;
+            }
+            yield Files::getUnixStylePath($potentialPackageDirectory);
         }
     }
 
     /**
-     * @param string $packageKey
-     * @param string $packagePath
-     * @param array $composerManifest
-     * @return array
      * @throws Exception\CorruptPackageException
      * @throws Exception\InvalidPackagePathException
      */
-    protected function preparePackageStateConfiguration($packageKey, $packagePath, $composerManifest): array
+    protected function preparePackageStateConfiguration(FlowPackageKey $packageKey, string $packagePath, array $composerManifest): array
     {
         $autoload = $composerManifest['autoload'] ?? [];
 
         return [
-            'packageKey' => $packageKey,
+            'packageKey' => $packageKey->value,
             'packagePath' => str_replace($this->packagesBasePath, '', $packagePath),
             'composerName' => $composerManifest['name'],
             'autoloadConfiguration' => $autoload,
@@ -713,7 +549,7 @@ class PackageManager
     {
         $packagePath = $packageStateConfiguration['packagePath'] ?? null;
         $packageClassInformation = $packageStateConfiguration['packageClassInformation'] ?? null;
-        $package = $this->packageFactory->create($this->packagesBasePath, $packagePath, $packageStateConfiguration['packageKey'], $composerName, $packageStateConfiguration['autoloadConfiguration'], $packageClassInformation);
+        $package = $this->packageFactory->create($this->packagesBasePath, $packagePath, FlowPackageKey::fromString($packageStateConfiguration['packageKey']), $composerName, $packageStateConfiguration['autoloadConfiguration'], $packageClassInformation);
         $this->packageKeys[strtolower($package->getPackageKey())] = $package->getPackageKey();
         $this->packages[$package->getPackageKey()] = $package;
     }
@@ -764,7 +600,11 @@ class PackageManager
         // Clean legacy file TODO: Remove at some point
         $legacyPackageStatesPath = FLOW_PATH_CONFIGURATION . 'PackageStates.php';
         if (is_file($legacyPackageStatesPath)) {
-            @unlink($legacyPackageStatesPath);
+            try {
+                @unlink($legacyPackageStatesPath);
+            } catch (\Throwable $e) {
+                // PHP 8 apparently throws for unlink even with shutup operator, but we really don't care at this place. It's also the only way to handle this race-condition free.
+            }
         }
         OpcodeCacheHelper::clearAllActive($this->packageInformationCacheFilePath);
 
@@ -851,81 +691,7 @@ class PackageManager
      */
     public function isPackageKeyValid($packageKey): bool
     {
-        return preg_match(PackageInterface::PATTERN_MATCH_PACKAGEKEY, $packageKey) === 1;
-    }
-
-    /**
-     * Resolves package key from Composer manifest
-     *
-     * If it is a Flow package the name of the containing directory will be used.
-     *
-     * Else if the composer name of the package matches the first part of the lowercased namespace of the package, the mixed
-     * case version of the composer name / namespace will be used, with backslashes replaced by dots.
-     *
-     * Else the composer name will be used with the slash replaced by a dot
-     *
-     * @param array $manifest
-     * @param string $packagePath
-     * @return string
-     */
-    protected function getPackageKeyFromManifest(array $manifest, $packagePath): string
-    {
-        if (isset($manifest['extra']['neos']['package-key']) && $this->isPackageKeyValid($manifest['extra']['neos']['package-key'])) {
-            return $manifest['extra']['neos']['package-key'];
-        }
-
-        $composerName = $manifest['name'];
-        $autoloadNamespace = null;
-        $type = null;
-        if (isset($manifest['autoload']['psr-0']) && is_array($manifest['autoload']['psr-0'])) {
-            $namespaces = array_keys($manifest['autoload']['psr-0']);
-            $autoloadNamespace = reset($namespaces);
-        }
-
-        if (isset($manifest['type'])) {
-            $type = $manifest['type'];
-        }
-
-        return $this->derivePackageKey($composerName, $type, $packagePath, $autoloadNamespace);
-    }
-
-    /**
-     * Derive a flow package key from the given information.
-     * The order of importance is:
-     *
-     * - package install path
-     * - first found autoload namespace
-     * - composer name
-     *
-     * @param string $composerName
-     * @param string $packageType
-     * @param string $packagePath
-     * @param string $autoloadNamespace
-     * @return string
-     */
-    protected function derivePackageKey(string $composerName, string $packageType = null, string $packagePath = '', string $autoloadNamespace = null): string
-    {
-        $packageKey = '';
-
-        if ($packageType !== null && ComposerUtility::isFlowPackageType($packageType)) {
-            $lastSegmentOfPackagePath = substr(trim($packagePath, '/'), strrpos(trim($packagePath, '/'), '/') + 1);
-            if (strpos($lastSegmentOfPackagePath, '.') !== false) {
-                $packageKey = $lastSegmentOfPackagePath;
-            }
-        }
-
-        if ($autoloadNamespace !== null && ($packageKey === null || $this->isPackageKeyValid($packageKey) === false)) {
-            $packageKey = str_replace('\\', '.', $autoloadNamespace);
-        }
-
-        if ($packageKey === null || $this->isPackageKeyValid($packageKey) === false) {
-            $packageKey = str_replace('/', '.', $composerName);
-        }
-
-        $packageKey = trim($packageKey, '.');
-        $packageKey = preg_replace('/[^A-Za-z0-9.]/', '', $packageKey);
-
-        return $packageKey;
+        return FlowPackageKey::isPackageKeyValid($packageKey);
     }
 
     /**

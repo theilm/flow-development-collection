@@ -86,6 +86,8 @@ Flow_Object_Configuration:
 # This cache contains meta data for the Doctrine ORM.
 Flow_Persistence_Doctrine:
   backend: Neos\Cache\Backend\SimpleFileBackend
+Flow_Persistence_Doctrine_Metadata:
+  backend: Neos\Cache\Backend\SimpleFileBackend
 Flow_Persistence_Doctrine_Results:
   backend: Neos\Cache\Backend\FileBackend
   backendOptions:
@@ -93,16 +95,13 @@ Flow_Persistence_Doctrine_Results:
 Flow_Persistence_Doctrine_SecondLevel:
   backend: Neos\Cache\Backend\SimpleFileBackend
 
-# Flow_Reflection*
+# Flow_Reflection
 #
 #
-Flow_Reflection_Status:
-  frontend: Neos\Cache\Frontend\StringFrontend
+Flow_Reflection_RuntimeData:
   backend: Neos\Cache\Backend\SimpleFileBackend
-Flow_Reflection_CompiletimeData:
+Flow_Reflection_RuntimeClassSchemata:
   backend: Neos\Cache\Backend\SimpleFileBackend
-Flow_Reflection_RuntimeData: []
-Flow_Reflection_RuntimeClassSchemata: []
 
 # Flow_Resource_Status
 #
@@ -121,6 +120,9 @@ Flow_Security_Cryptography_HashService:
   persistent: true
   backendOptions:
     defaultLifetime: 0
+Flow_Security_Cryptography_PrecomposedHashProvider:
+  frontend: Neos\Cache\Frontend\StringFrontend
+  backend: Neos\Cache\Backend\SimpleFileBackend
 
 
 # Flow_Session_*
@@ -128,6 +130,7 @@ Flow_Session_MetaData:
   backend: Neos\Cache\Backend\FileBackend
   persistent: true
 Flow_Session_Storage:
+  frontend: Neos\Cache\Frontend\StringFrontend
   backend: Neos\Cache\Backend\FileBackend
   persistent: true
 

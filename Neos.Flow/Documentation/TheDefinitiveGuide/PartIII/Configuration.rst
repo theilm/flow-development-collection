@@ -7,7 +7,7 @@ Configuration
 Configuration is an important aspect of versatile applications. Flow provides you with
 configuration mechanisms which have a small footprint and are convenient to use and
 powerful at the same time. Hub for all configuration is the configuration manager which
-handles alls configuration tasks like reading configuration, configuration cascading, and
+handles all configuration tasks like reading configuration, configuration cascading, and
 (later) also writing configuration.
 
 File Locations
@@ -153,6 +153,25 @@ Some examples:
 ``%env:HOME%``
   Will be replaced by the value of the "HOME" environment variable.
 
+**Type of environment variables**
+
+Evnironment variables are replaced via PHPs ``getenv()`` function. Thus, they always evaluate to *strings*.
+Unless a mentioned environment variable does not exist, in which case it evaluates to ``false``.
+With version 8.1 Flow allows to cast the type of an environment variable to an *Integer*, *Float*, *Boolean*
+or *String* explicitly, specifying the *type* in the replacement string:
+
+``%env(int):SOME_ENVIRONMENT_VARIABLE``
+
+This would lead to the specified configuration to be casted to an integer. When the environment variable
+is not defined, the base value of the specified type will be used.
+
+The allowed types and their base values are:
+
+* ``int``: 0
+* ``bool``: false
+* ``float``: 0.0
+* ``string``: "" (empty string)
+
 Custom Configuration Types
 --------------------------
 
@@ -178,11 +197,11 @@ This will allow to use the new configuration type ``Views`` in the same way as t
 supported by Flow natively, as soon as you have a file named ``Views.yaml`` in your configuration
 folder(s). See `Working with other configuration`_ for details.
 
-If you want to use a specific configuration processing type, you can pass it when registering
-the configuration. The supported types are defined as ``CONFIGURATION_PROCESSING_TYPE_*``
-constants in ``ConfigurationManager``.
+If you want to use a custom configuration processing loader, you can pass an implementation of
+``\Neos\Flow\Configuration\Loader\LoaderInterface`` when registering the configuration or use one of the implementations
+found in ``Configuration\Loader``.
 
-**Example: Register a custom configuration type**
+**Example: Register a custom configuration type and loader**
 
 .. code-block:: php
 
@@ -191,7 +210,13 @@ constants in ``ConfigurationManager``.
         function ($configurationManager) {
             $configurationManager->registerConfigurationType(
                 'CustomObjects',
-                ConfigurationManager::CONFIGURATION_PROCESSING_TYPE_OBJECTS
+                new class implements LoaderInterface {
+                    public function load(array $packages, ApplicationContext $context) : array {
+                        // load your configuration into an array $customObjectsConfiguration
+                        $customObjectsConfiguration = ...
+                        return $customObjectsConfiguration;
+                    }
+                }
             );
         }
     );
@@ -212,8 +237,7 @@ configuration filenames.
         function (ConfigurationManager $configurationManager) {
             $configurationManager->registerConfigurationType(
                 'Models',
-                ConfigurationManager::CONFIGURATION_PROCESSING_TYPE_DEFAULT,
-                true
+                new MergeLoader(new YamlSource(), 'Models')
             );
         }
     );
@@ -230,7 +254,7 @@ configuration of type ``Models`` is requested:
         Models.Quux.yaml
 
 .. note::
-    Split configuration is supported for all except ``CONFIGURATION_PROCESSING_TYPE_ROUTES`` processing types.
+    Split configuration is supported for all configuration loader except ``RouteLoader()``.
     This is because Routing uses a custom include semantic that shares the naming convention with split sources.
 
 Accessing Settings
@@ -289,12 +313,12 @@ of a classes' package and output some option value:
   a few settings you might want to inject those specifically with the Inject
   annotation described below.
 
-Injection of single settings into properties
---------------------------------------------
+Injection of single settings
+----------------------------
 
-Flow provides a way to inject specific settings through the ``InjectConfiguration`` annotation directly into your
-properties.
-The annotation provides three optional attributes related to configuration injection:
+Flow provides a way to inject specific settings through the ``InjectConfiguration`` PHP attribute directly into class
+properties and constructor arguments.
+The attribute is configured through three optional properties related to configuration injection:
 
 * ``package`` specifies the package to get the configuration from. Defaults to the package the current class belongs to.
 * ``path`` specifies the path to the setting that should be injected. If it's not set all settings of the current (or
@@ -302,11 +326,11 @@ The annotation provides three optional attributes related to configuration injec
   from, defaults to ConfigurationManager::CONFIGURATION_TYPE_SETTINGS.
 
 .. note::
-  As a best-practice for testing and extensibility you should also provide setters for
-  any setting you add to your class, although this is not required for the injection
-  to work.
+  As a best-practice for testing and extensibility you should prefer constructor arguments
+  over properties or provide setters for any setting you add to your class.
+  Annotations based on doc-comments supported but deprecated, therefore use PHP attributes instead.
 
-**Example: single setting injection**
+**Example: injecting settings**
 
 .. code-block:: yaml
 
@@ -327,32 +351,22 @@ The annotation provides three optional attributes related to configuration injec
 
     class SomeClass
     {
+      #[Flow\InjectConfiguration(path: "email", package: "SomeOther.Package")]
+      protected string $email;
 
       /**
-       * @Flow\InjectConfiguration(path="administrator.name")
-       * @var string
-       */
-      protected $name;
-
-      /**
-       * @Flow\InjectConfiguration(package="SomeOther.Package", path="email")
-       * @var string
-       */
-      protected $email;
-
-      /**
+       * Deprecated: doc-comment based annotation
+       *
        * @Flow\InjectConfiguration(package="SomeOther.Package")
        * @var array
        */
       protected $someOtherPackageSettings = array();
 
-      /**
-       * Overrides the name
-       */
-      public function setName($name): void
-      {
-        $this->name = $name;
-      }
+      public function __construct(
+        #[Flow\InjectConfiguration(path="administrator.name")]
+        readonly protected string $name
+      )
+      {}
 
       /**
        * Overrides the email

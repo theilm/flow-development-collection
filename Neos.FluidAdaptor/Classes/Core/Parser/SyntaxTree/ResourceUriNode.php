@@ -14,7 +14,6 @@ namespace Neos\FluidAdaptor\Core\Parser\SyntaxTree;
 use Neos\FluidAdaptor\Core\Parser\Interceptor\ResourceInterceptor;
 use Neos\FluidAdaptor\Core\ViewHelper\ViewHelperResolver;
 use Neos\FluidAdaptor\ViewHelpers\Uri\ResourceViewHelper;
-use TYPO3Fluid\Fluid\Core\Parser\ParsingState;
 use TYPO3Fluid\Fluid\Core\Parser\SyntaxTree\ViewHelperNode;
 use TYPO3Fluid\Fluid\Core\Parser\SyntaxTree\NodeInterface;
 
@@ -26,7 +25,7 @@ use TYPO3Fluid\Fluid\Core\Parser\SyntaxTree\NodeInterface;
 class ResourceUriNode extends ViewHelperNode
 {
     /**
-     * @var array
+     * @var array<NodeInterface>
      */
     protected $arguments = [];
 
@@ -47,6 +46,7 @@ class ResourceUriNode extends ViewHelperNode
     {
         $this->viewHelperResolver = $viewHelperResolver;
         $this->uninitializedViewHelper = $this->viewHelperResolver->createViewHelperInstanceFromClassName($this->viewHelperClassName);
+        /** @phpstan-ignore-next-line we use internal api */
         $this->uninitializedViewHelper->setViewHelperNode($this);
         $this->argumentDefinitions = $this->viewHelperResolver->getArgumentDefinitionsForViewHelper($this->uninitializedViewHelper);
     }
@@ -55,9 +55,8 @@ class ResourceUriNode extends ViewHelperNode
      * Constructor.
      *
      * @param NodeInterface[] $arguments Arguments of view helper - each value is a RootNode.
-     * @param ParsingState $state
      */
-    public function __construct(array $arguments, ParsingState $state)
+    public function __construct(array $arguments)
     {
         $this->arguments = $arguments;
     }

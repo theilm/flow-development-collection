@@ -130,7 +130,7 @@ class FloatConverter extends AbstractTypeConverter
      * @throws InvalidPropertyMappingConfigurationException
      * @api
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
         if ($source === null || $source === '') {
             return null;
@@ -152,7 +152,7 @@ class FloatConverter extends AbstractTypeConverter
      *
      * @param string $source
      * @param PropertyMappingConfigurationInterface $configuration
-     * @return float|\Neos\Flow\Validation\Error Parsed float number or error
+     * @return float|int|string|\Neos\Flow\Validation\Error
      * @throws \Neos\Flow\Property\Exception\InvalidPropertyMappingConfigurationException
      */
     protected function parseUsingLocaleIfConfigured($source, PropertyMappingConfigurationInterface $configuration)
@@ -167,9 +167,11 @@ class FloatConverter extends AbstractTypeConverter
             $locale = new Locale($configuration['locale']);
         } elseif ($configuration['locale'] instanceof Locale) {
             $locale = $configuration['locale'];
+        } else {
+            $locale = null;
         }
 
-        if (!($locale instanceof Locale)) {
+        if (!$locale instanceof Locale) {
             $exceptionMessage = 'Determined locale is not of type "\Neos\Flow\I18n\Locale", but of type "' . (is_object($locale) ? get_class($locale) : gettype($locale)) . '".';
             throw new InvalidPropertyMappingConfigurationException($exceptionMessage, 1334837413);
         }

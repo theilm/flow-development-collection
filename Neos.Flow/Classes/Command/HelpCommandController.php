@@ -82,7 +82,7 @@ class HelpCommandController extends CommandController
      * @return void
      * @throws StopActionException
      */
-    public function helpCommand(string $commandIdentifier = null)
+    public function helpCommand(?string $commandIdentifier = null)
     {
         $exceedingArguments = $this->request->getExceedingArguments();
         if (count($exceedingArguments) > 0 && $commandIdentifier === null) {
@@ -124,7 +124,7 @@ class HelpCommandController extends CommandController
 
         $this->outputLine('* = compile time command');
         $this->outputLine();
-        $this->outputLine('See "%s help <commandidentifier>" for more information about a specific command.', [$this->getFlowInvocationString()]);
+        $this->outputLine('Use "%s [command] --help" for more information about a command.', [$this->getFlowInvocationString()]);
         $this->outputLine();
     }
 
@@ -212,6 +212,7 @@ class HelpCommandController extends CommandController
         if (count($optionDescriptions) > 0) {
             $this->outputLine();
             $this->outputLine('<b>OPTIONS:</b>');
+            $optionDescriptions[] = vsprintf('  %-20s %s', ['--help', 'Shows detailed information about this command']);
             foreach ($optionDescriptions as $optionDescription) {
                 $this->outputLine($optionDescription);
             }
@@ -260,7 +261,7 @@ class HelpCommandController extends CommandController
         }
         $this->outputLine();
         $this->outputLine('Enter "%s help" for an overview of all available commands', [$this->getFlowInvocationString()]);
-        $this->outputLine('or "%s help <commandIdentifier>" for a detailed description of the corresponding command.', [$this->getFlowInvocationString()]);
+        $this->outputLine('or "%s <commandIdentifier> --help" for a detailed description of the corresponding command.', [$this->getFlowInvocationString()]);
         $this->quit(1);
     }
 

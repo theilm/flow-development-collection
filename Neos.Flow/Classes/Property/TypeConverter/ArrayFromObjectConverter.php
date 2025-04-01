@@ -11,6 +11,7 @@ namespace Neos\Flow\Property\TypeConverter;
  * source code.
  */
 
+use Doctrine\Persistence\Proxy as DoctrineProxy;
 use Neos\Flow\Annotations as Flow;
 use Neos\Error\Messages\Error;
 use Neos\Flow\Persistence\Aspect\PersistenceMagicInterface;
@@ -94,10 +95,10 @@ class ArrayFromObjectConverter extends AbstractTypeConverter
      * @return mixed|Error the target type, or an error object if a user-error occurred
      * @api
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
         $properties = ObjectAccess::getGettableProperties($source);
-        if ($source instanceof \Doctrine\ORM\Proxy\Proxy) {
+        if ($source instanceof DoctrineProxy) {
             $className = get_parent_class($source);
         } else {
             $className = get_class($source);

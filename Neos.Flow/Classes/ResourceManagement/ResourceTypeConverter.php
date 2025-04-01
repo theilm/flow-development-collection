@@ -153,7 +153,7 @@ class ResourceTypeConverter extends AbstractTypeConverter
      * @throws Exception\InvalidResourceDataException
      * @throws InvalidPropertyMappingConfigurationException
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
         if (empty($source)) {
             return null;
@@ -181,7 +181,7 @@ class ResourceTypeConverter extends AbstractTypeConverter
      * @param PropertyMappingConfigurationInterface|null $configuration
      * @return PersistentResource|null|FlowError
      */
-    protected function handleFileUploads(array $source, PropertyMappingConfigurationInterface $configuration = null)
+    protected function handleFileUploads(array $source, ?PropertyMappingConfigurationInterface $configuration = null)
     {
         if (!isset($source['error']) || $source['error'] === \UPLOAD_ERR_NO_FILE) {
             if (isset($source['originallySubmittedResource']) && isset($source['originallySubmittedResource']['__identity'])) {
@@ -226,10 +226,10 @@ class ResourceTypeConverter extends AbstractTypeConverter
      * @throws Exception\InvalidResourceDataException
      * @throws InvalidPropertyMappingConfigurationException
      */
-    protected function handleHashAndData(array $source, PropertyMappingConfigurationInterface $configuration = null)
+    protected function handleHashAndData(array $source, ?PropertyMappingConfigurationInterface $configuration = null)
     {
         $hash = null;
-        $resource = false;
+        $resource = null;
         $givenResourceIdentity = null;
         if (isset($source['__identity'])) {
             $givenResourceIdentity = $source['__identity'];
@@ -253,7 +253,7 @@ class ResourceTypeConverter extends AbstractTypeConverter
         }
         if ($resource === null) {
             $collectionName = $source['collectionName'] ?? $this->getCollectionName($source, $configuration);
-            if (isset($source['data'])) {
+            if (isset($source['data']) && isset($source['filename'])) {
                 $resource = $this->resourceManager->importResourceFromContent(base64_decode($source['data']), $source['filename'], $collectionName, $givenResourceIdentity);
             } elseif ($hash !== null) {
                 $resource = $this->resourceManager->importResource($configuration->getConfigurationValue(ResourceTypeConverter::class, self::CONFIGURATION_RESOURCE_LOAD_PATH) . '/' . $hash, $collectionName, $givenResourceIdentity);
@@ -278,7 +278,7 @@ class ResourceTypeConverter extends AbstractTypeConverter
      * @param PropertyMappingConfigurationInterface|null $configuration
      * @return PersistentResource|null|FlowError
      */
-    protected function handleUploadedFile(UploadedFileInterface $source, PropertyMappingConfigurationInterface $configuration = null)
+    protected function handleUploadedFile(UploadedFileInterface $source, ?PropertyMappingConfigurationInterface $configuration = null)
     {
         if ($source instanceof FlowUploadedFile && $source->getError() === UPLOAD_ERR_NO_FILE && $source->getOriginallySubmittedResource() !== null) {
             $identifier = is_array($source->getOriginallySubmittedResource()) ? $source->getOriginallySubmittedResource()['__identity'] : $source->getOriginallySubmittedResource();
@@ -329,7 +329,7 @@ class ResourceTypeConverter extends AbstractTypeConverter
      * @return string
      * @throws InvalidPropertyMappingConfigurationException
      */
-    protected function getCollectionName($source, PropertyMappingConfigurationInterface $configuration = null)
+    protected function getCollectionName($source, ?PropertyMappingConfigurationInterface $configuration = null)
     {
         if ($configuration === null) {
             return ResourceManager::DEFAULT_PERSISTENT_COLLECTION_NAME;

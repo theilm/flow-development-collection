@@ -8,6 +8,7 @@ Neos:
       # A list of tags to be ignored during reflection
       ignoredTags:
         'const': true
+        'configkey': true
         'scope': true
         'test': true
         'expectedException': true
@@ -22,7 +23,8 @@ Neos:
         'Then': true
         'BeforeScenario': true
         'AfterScenario': true
-        'fixtures': true
+        'BeforeSuite': true
+        'AfterSuite': true
         'Isolated': true
         'AfterFeature': true
         'BeforeFeature': true
@@ -32,8 +34,7 @@ Neos:
         'covers': true
         'doesNotPerformAssertions': true
         'template': true
-        'psalm': true
-        'psalm-immutable': true
+
 
       # If enabled, the Reflection Service notes all incorrect or inconsistent usage
       # of @param annotations in the default log.

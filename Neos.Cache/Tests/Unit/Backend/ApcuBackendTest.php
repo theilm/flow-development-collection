@@ -187,6 +187,25 @@ class ApcuBackendTest extends BaseTestCase
     /**
      * @test
      */
+    public function flushByTagsRemovesCacheEntriesWithSpecifiedTags()
+    {
+        $backend = $this->setUpBackend();
+
+        $data = 'some data' . microtime();
+        $backend->set('BackendAPCUTest1', $data, ['UnitTestTag%test', 'UnitTestTag%boring']);
+        $backend->set('BackendAPCUTest2', $data, ['UnitTestTag%test', 'UnitTestTag%special']);
+        $backend->set('BackendAPCUTest3', $data, ['UnitTestTag%test']);
+
+        $backend->flushByTags(['UnitTestTag%boring', 'UnitTestTag%special']);
+
+        self::assertFalse($backend->has('BackendAPCUTest1'), 'BackendAPCUTest1');
+        self::assertFalse($backend->has('BackendAPCUTest2'), 'BackendAPCUTest2');
+        self::assertTrue($backend->has('BackendAPCUTest3'), 'BackendAPCUTest3');
+    }
+
+    /**
+     * @test
+     */
     public function flushRemovesAllCacheEntries()
     {
         $backend = $this->setUpBackend();
@@ -274,6 +293,128 @@ class ApcuBackendTest extends BaseTestCase
     }
 
     /**
+     * @test
+     */
+    public function iterationOverEmptyCacheYieldsNoData()
+    {
+        $backend = $this->setUpBackend();
+        $cache = new VariableFrontend('UnitTestCache', $backend);
+        $data = \iterator_to_array(
+            $cache->getIterator()
+        );
+        self::assertEmpty($data);
+    }
+
+    /**
+     * @test
+     */
+    public function iterationOverNotEmptyCacheYieldsData()
+    {
+        $backend = $this->setUpBackend();
+        $cache = new VariableFrontend('UnitTestCache', $backend);
+
+        $cache->set('first', 'firstData');
+        $cache->set('second', 'secondData');
+
+        $data = \iterator_to_array(
+            $cache->getIterator()
+        );
+        self::assertEquals(
+            ['first' => 'firstData', 'second' => 'secondData'],
+            $data
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function iterationResetsWhenDataIsSet()
+    {
+        $backend = $this->setUpBackend();
+        $cache = new VariableFrontend('UnitTestCache', $backend);
+
+        $cache->set('first', 'firstData');
+        $cache->set('second', 'secondData');
+
+        \iterator_to_array(
+            $cache->getIterator()
+        );
+
+        $cache->set('third', 'thirdData');
+
+        $data = \iterator_to_array(
+            $cache->getIterator()
+        );
+        self::assertEquals(
+            ['first' => 'firstData', 'second' => 'secondData', 'third' => 'thirdData'],
+            $data
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function iterationResetsWhenDataFlushed()
+    {
+        $backend = $this->setUpBackend();
+        $cache = new VariableFrontend('UnitTestCache', $backend);
+
+        $cache->set('first', 'firstData');
+        \iterator_to_array(
+            $cache->getIterator()
+        );
+
+        $backend->flush();
+
+        $data = \iterator_to_array(
+            $cache->getIterator()
+        );
+        self::assertEmpty($data);
+    }
+
+    /**
+     * @test
+     */
+    public function iterationResetsWhenDataFlushedByTag()
+    {
+        $backend = $this->setUpBackend();
+        $cache = new VariableFrontend('UnitTestCache', $backend);
+
+        $cache->set('first', 'firstData', ['tag']);
+        \iterator_to_array(
+            $cache->getIterator()
+        );
+
+        $backend->flushByTag('tag');
+
+        $data = \iterator_to_array(
+            $cache->getIterator()
+        );
+        self::assertEmpty($data);
+    }
+
+    /**
+     * @test
+     */
+    public function iterationResetsWhenDataGetsRemoved()
+    {
+        $backend = $this->setUpBackend();
+        $cache = new VariableFrontend('UnitTestCache', $backend);
+
+        $cache->set('first', 'firstData');
+        \iterator_to_array(
+            $cache->getIterator()
+        );
+
+        $backend->remove('first');
+
+        $data = \iterator_to_array(
+            $cache->getIterator()
+        );
+        self::assertEmpty($data);
+    }
+
+    /**
      * Sets up the APCu backend used for testing
      *
      * @return ApcuBackend
@@ -284,6 +425,7 @@ class ApcuBackendTest extends BaseTestCase
         $cache = $this->createMock(FrontendInterface::class);
         $backend = new ApcuBackend($this->getEnvironmentConfiguration(), []);
         $backend->setCache($cache);
+        $backend->flush(); // I'd rather start with a clean directory in the first place, but I can't get the "vfs" thing to work
 
         return $backend;
     }

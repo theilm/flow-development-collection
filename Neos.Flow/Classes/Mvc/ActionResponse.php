@@ -1,28 +1,81 @@
 <?php
 namespace Neos\Flow\Mvc;
 
+use GuzzleHttp\Psr7\Utils;
 use Neos\Flow\Http\Cookie;
+use Neos\Flow\Mvc\Controller\AbstractController;
+use Neos\Flow\Mvc\Controller\ControllerContext;
 use Psr\Http\Message\ResponseInterface;
-use function GuzzleHttp\Psr7\stream_for;
 use Neos\Flow\Annotations as Flow;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UriInterface;
-use GuzzleHttp\Psr7\Stream;
 use GuzzleHttp\Psr7\Response;
-use Neos\Flow\Http\Component\SetHeaderComponent;
-use Neos\Flow\Http\Component\ReplaceHttpResponseComponent;
 
 /**
- * The minimal MVC response object.
- * It allows for simple interactions with the HTTP response from within MVC actions. More specific requirements can be implemented via HTTP middlewares.
+ * The legacy MVC response object.
  *
+ * Previously Flows MVC needed a single mutable response which was passed from dispatcher to controllers
+ * and even further to the view and other places via the controller context: {@see ControllerContext::getResponse()}.
+ * This allowed to manipulate the response at every place.
+ *
+ * With the dispatcher and controllers now directly returning a response, the mutability is no longer required.
+ * Additionally, the abstraction offers naturally nothing, that cant be archived by the psr response,
+ * as it directly translates to one: {@see ActionResponse::buildHttpResponse()}
+ *
+ * So you can and should use the immutable psr {@see ResponseInterface} instead where-ever possible.
+ *
+ * For backwards compatibility, each controller will might now manage an own instance of the action response
+ * via `$this->response` {@see AbstractController::$response} and pass it along to places.
+ * But this behaviour is deprecated!
+ *
+ * Instead of modifying the repose via $this->response like
+ *
+ * - $this->response->addHttpHeader
+ * - $this->response->setHttpHeader
+ * - $this->response->setContentType
+ * - $this->response->setStatusCode
+ *
+ * you can directly return a PSR repose {@see \GuzzleHttp\Psr7\Response} from a controller.
+ *
+ * *set status code and contents and additional header:*
+ *
+ * ```php
+ * public function myAction()
+ * {
+ *     return (new Response(status: 200, body: $output))
+ *         ->withAddedHeader('X-My-Header', 'foo');
+ * }
+ * ```
+ *
+ * *modify a view response with additional header:*
+ *
+ * ```php
+ * public function myAction()
+ * {
+ *     $response = $this->view->render();
+ *     if (!$response instanceof Response) {
+ *         $response = new Response(body: $response);
+ *     }
+ *     return $response->withAddedHeader('X-My-Header', 'foo');
+ * }
+ * ```
+ *
+ * *render json without using the legacy json view:*
+ *
+ * ```php
+ * public function myAction()
+ * {
+ *     return new Response(body: json_encode($data, JSON_THROW_ON_ERROR), headers: ['Content-Type' => 'application/json']);
+ * }
+ * ```
+ *
+ * @deprecated with Flow 9
  * @Flow\Proxy(false)
- * @api
  */
 final class ActionResponse
 {
     /**
-     * @var Stream
+     * @var StreamInterface
      */
     protected $content;
 
@@ -63,18 +116,18 @@ final class ActionResponse
 
     public function __construct()
     {
-        $this->content = stream_for();
+        $this->content = Utils::streamFor();
     }
 
     /**
      * @param string|StreamInterface $content
      * @return void
-     * @api
+     * @deprecated please use {@see ResponseInterface::withBody()} in combination with {@see \GuzzleHttp\Psr7\Utils::streamFor} instead
      */
     public function setContent($content): void
     {
         if (!$content instanceof StreamInterface) {
-            $content = stream_for($content);
+            $content = Utils::streamFor($content);
         }
 
         $this->content = $content;
@@ -85,7 +138,7 @@ final class ActionResponse
      *
      * @param string $contentType
      * @return void
-     * @api
+     * @deprecated please use {@see ResponseInterface::withHeader()} with "Content-Type" instead.
      */
     public function setContentType(string $contentType): void
     {
@@ -98,7 +151,7 @@ final class ActionResponse
      * @param UriInterface $uri
      * @param int $statusCode
      * @return void
-     * @api
+     * @deprecated please use {@see ResponseInterface::withStatus()} and {@see ResponseInterface::withHeader()} with "Header" instead.
      */
     public function setRedirectUri(UriInterface $uri, int $statusCode = 303): void
     {
@@ -112,7 +165,7 @@ final class ActionResponse
      *
      * @param int $statusCode
      * @return void
-     * @api
+     * @deprecated please use {@see ResponseInterface::withStatus()} instead.
      */
     public function setStatusCode(int $statusCode): void
     {
@@ -124,7 +177,7 @@ final class ActionResponse
      * This leads to a corresponding `Set-Cookie` header to be set in the HTTP response
      *
      * @param Cookie $cookie Cookie to be set in the HTTP response
-     * @api
+     * @deprecated please use {@see ResponseInterface::withHeader()} with "Set-Cookie" instead.
      */
     public function setCookie(Cookie $cookie): void
     {
@@ -136,7 +189,7 @@ final class ActionResponse
      * This leads to a corresponding `Set-Cookie` header with an expired Cookie to be set in the HTTP response
      *
      * @param string $cookieName Name of the cookie to delete
-     * @api
+     * @deprecated
      */
     public function deleteCookie(string $cookieName): void
     {
@@ -146,31 +199,9 @@ final class ActionResponse
     }
 
     /**
-     * Set a (HTTP) component parameter for use later in the chain.
-     * This can be used to adjust all aspects of the later processing if needed.
-     *
-     * @param string $componentClassName
-     * @param string $parameterName
-     * @param mixed $value
-     * @return void
-     * @deprecated since Flow 7.0 use setHttpHeader or replaceHttpResponse instead. For now this will still work with $componentClassName of "SetHeaderComponent" or "ReplaceHttpResponseComponent" only.
-     */
-    public function setComponentParameter(string $componentClassName, string $parameterName, $value): void
-    {
-        if ($componentClassName === SetHeaderComponent::class) {
-            $this->setHttpHeader($parameterName, $value);
-            return;
-        }
-
-        if ($componentClassName === ReplaceHttpResponseComponent::class && $parameterName === 'response') {
-            $this->replaceHttpResponse($value);
-            return;
-        }
-        throw new \InvalidArgumentException(sprintf('The method %s is deprecated. It will only allow a $componentClassName parameter of "%s" or "%s". If you want to send data to your middleware from the action, use response headers or introduce a global context. Both solutions are to be considered bad practice though.', __METHOD__, SetHeaderComponent::class, ReplaceHttpResponseComponent::class), 1605088079);
-    }
-
-    /**
      * Set the specified header in the response, overwriting any previous value set for this header.
+     *
+     * This behaviour is unsafe and partially unspecified: https://github.com/neos/flow-development-collection/issues/2492
      *
      * @param string $headerName The name of the header to set
      * @param array|string|\DateTime $headerValue An array of values or a single value for the specified header field
@@ -189,6 +220,8 @@ final class ActionResponse
 
     /**
      * Add the specified header to the response, without overwriting any previous value set for this header.
+     *
+     * This behaviour is unsafe and partially unspecified: https://github.com/neos/flow-development-collection/issues/2492
      *
      * @param string $headerName The name of the header to set
      * @param array|string|\DateTime $headerValue An array of values or a single value for the specified header field
@@ -245,16 +278,23 @@ final class ActionResponse
         return $this->statusCode ?? 200;
     }
 
-    /**
-     * @return string
-     */
-    public function getContentType(): ?string
+    public function hasContentType(): bool
     {
-        return $this->contentType;
+        return !empty($this->contentType);
     }
 
     /**
-     * Use this if you want build your own HTTP Response inside your action
+     * @return string
+     */
+    public function getContentType(): string
+    {
+        return $this->contentType ?? '';
+    }
+
+    /**
+     * Unsafe. Please avoid the use of this escape hatch as the behaviour is partly unspecified
+     * https://github.com/neos/flow-development-collection/issues/2492
+     *
      * @param ResponseInterface $response
      */
     public function replaceHttpResponse(ResponseInterface $response): void
@@ -272,12 +312,8 @@ final class ActionResponse
             $actionResponse->setContent($this->content);
         }
 
-        if ($this->contentType !== null) {
+        if ($this->hasContentType()) {
             $actionResponse->setContentType($this->contentType);
-        }
-
-        if ($this->statusCode !== null) {
-            $actionResponse->setStatusCode($this->statusCode);
         }
 
         if ($this->redirectUri !== null) {
@@ -286,6 +322,9 @@ final class ActionResponse
 
         if ($this->httpResponse !== null) {
             $actionResponse->replaceHttpResponse($this->httpResponse);
+        }
+        if ($this->statusCode !== null) {
+            $actionResponse->setStatusCode($this->statusCode);
         }
         foreach ($this->cookies as $cookie) {
             $actionResponse->setCookie($cookie);
@@ -297,13 +336,16 @@ final class ActionResponse
     }
 
     /**
-     * Note this is a special use case method that will apply the internal properties (Content-Type, StatusCode, Location, Set-Cookie and Content)
-     * to the given PSR-7 Response and return a modified response. This is used to merge the ActionResponse properties into a possible HttpResponse
-     * created in a View (see ActionController::renderView()) because those would be overwritten otherwise. Note that any component parameters will
-     * still run through the component chain and will not be propagated here.
+     * During the migration of {@see ActionResponse} to {@see HttpResponse} this might come in handy.
+     *
+     * Note this is a special use case method that will apply the internal properties
+     * (Content-Type, StatusCode, Location, Set-Cookie and Content)
+     * to a new or replaced PSR-7 Response and return it.
+     *
+     * Possibly unsafe when used in combination with {@see self::replaceHttpResponse()}
+     * https://github.com/neos/flow-development-collection/issues/2492
      *
      * @return ResponseInterface
-     * @internal
      */
     public function buildHttpResponse(): ResponseInterface
     {
@@ -317,7 +359,7 @@ final class ActionResponse
             $httpResponse = $httpResponse->withBody($this->content);
         }
 
-        if ($this->contentType !== null) {
+        if ($this->hasContentType()) {
             $httpResponse = $httpResponse->withHeader('Content-Type', $this->contentType);
         }
 
@@ -342,6 +384,7 @@ final class ActionResponse
      */
     private function hasContent(): bool
     {
-        return $this->content->getSize() > 0;
+        $contentSize = $this->content->getSize();
+        return $contentSize === null || $contentSize > 0;
     }
 }

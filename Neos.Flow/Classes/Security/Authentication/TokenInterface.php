@@ -12,6 +12,7 @@ namespace Neos\Flow\Security\Authentication;
  */
 use Neos\Flow\Mvc\ActionRequest;
 use Neos\Flow\Security\Account;
+use Neos\Flow\Security\RequestPatternInterface;
 
 /**
  * Contract for an authentication token.
@@ -110,7 +111,7 @@ interface TokenInterface
     /**
      * Returns an array of set \Neos\Flow\Security\RequestPatternInterface, NULL if none was set
      *
-     * @return array Array of set request patterns
+     * @return array<RequestPatternInterface> Array of set request patterns
      * @see hasRequestPattern()
      */
     public function getRequestPatterns();
@@ -148,7 +149,7 @@ interface TokenInterface
      * @param Account $account An account object
      * @return void
      */
-    public function setAccount(Account $account = null);
+    public function setAccount(?Account $account = null);
 
     /**
      * Returns a string representation of the token for logging purposes.

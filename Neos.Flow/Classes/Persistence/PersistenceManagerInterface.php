@@ -94,35 +94,12 @@ interface PersistenceManagerInterface
      * backend. Otherwise NULL is returned.
      *
      * @param mixed $identifier
-     * @param string|null $objectType
-     * @psalm-param class-string|null $objectType
+     * @param class-string|null $objectType
      * @param boolean $useLazyLoading Set to true if you want to use lazy loading for this object
      * @return object|null The object for the identifier if it is known, or NULL
      * @api
      */
-    public function getObjectByIdentifier($identifier, string $objectType = null, bool $useLazyLoading = false);
-
-    /**
-     * Converts the given object into an array containing the identity of the domain object.
-     *
-     * @param object $object The object to be converted
-     * @return array The identity array in the format array('__identity' => '...')
-     * @throws UnknownObjectException if the given object is not known to the Persistence Manager
-     * @api
-     */
-    public function convertObjectToIdentityArray($object): array;
-
-    /**
-     * Recursively iterates through the given array and turns objects
-     * into arrays containing the identity of the domain object.
-     *
-     * @param array $array The array to be iterated over
-     * @return array The modified array without objects
-     * @throws UnknownObjectException if array contains objects that are not known to the Persistence Manager
-     * @api
-     * @see convertObjectToIdentityArray()
-     */
-    public function convertObjectsToIdentityArrays(array $array): array;
+    public function getObjectByIdentifier($identifier, ?string $objectType = null, bool $useLazyLoading = false);
 
     /**
      * Return a query object for the given type.
@@ -162,25 +139,14 @@ interface PersistenceManagerInterface
     public function update($object): void;
 
     /**
-     * Adds the given object to a list of allowed objects which may be persisted when persistAll() is called with the
-     * $onlyAllowedObjects flag. This is the case if "safe" HTTP request methods are used.
-     *
-     * @param object $object The object
-     * @return void
-     * @api
-     * @deprecated Use allowObject() instead. See https://github.com/neos/flow-development-collection/pull/2024
-     */
-    public function whitelistObject($object): void;
-
-    /**
-     * Adds the given object to a list of allowed objects which may be persisted when persistAll() is called with the
-     * $onlyAllowedObjects flag. This is the case if "safe" HTTP request methods are used.
+     * Adds the given object to a list of allowed objects which may be persisted when persistAllowedObjects() is called.
+     * This is the case if "safe" HTTP request methods are used.
      *
      * @param object $object The object
      * @return void
      * @api
      */
-    //public function allowObject($object): void;
+    public function allowObject($object);
 
     /**
      * Returns true, if an active connection to the persistence

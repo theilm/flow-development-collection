@@ -11,7 +11,6 @@ namespace Neos\FluidAdaptor\Tests\Functional\Core;
  * source code.
  */
 
-use Neos\Flow\Mvc\Routing\Route;
 use Neos\Flow\Tests\FunctionalTestCase;
 
 /**
@@ -26,17 +25,17 @@ class WidgetTest extends FunctionalTestCase
     {
         parent::setUp();
 
-        $route = new Route();
-        $route->setName('WidgetTest');
-        $route->setUriPattern('test/widget/{@controller}(/{@action})');
-        $route->setDefaults([
-            '@package' => 'Neos.FluidAdaptor',
-            '@subpackage' => 'Tests\Functional\Core\Fixtures',
-            '@action' => 'index',
-            '@format' => 'html'
-        ]);
-        $route->setAppendExceedingArguments(true);
-        $this->router->addRoute($route);
+        $this->registerRoute(
+            'WidgetTest',
+            'test/widget/{@controller}(/{@action})',
+            [
+                '@package' => 'Neos.FluidAdaptor',
+                '@subpackage' => 'Tests\Functional\Core\Fixtures',
+                '@action' => 'index',
+                '@format' => 'html'
+            ],
+            true
+        );
     }
 
     /**
@@ -51,7 +50,7 @@ class WidgetTest extends FunctionalTestCase
     {
         $response = $this->browser->request('http://localhost/test/widget/ajaxtest');
         [$confirmation,] = explode(chr(10), $response->getBody()->getContents());
-        self::assertSame('SomeAjaxController::indexAction()', $confirmation);
+        self::assertSame('SomeAjaxController::indexAction(option1: "value1", option2: "value2")', $confirmation);
     }
 
     /**
@@ -71,6 +70,23 @@ class WidgetTest extends FunctionalTestCase
 
         $response = $this->browser->request('http://localhost/' . $ajaxWidgetUri);
         self::assertSame('SomeAjaxController::ajaxAction("value1", "value2")', trim($response->getBody()->getContents()));
+    }
+
+    /**
+     * @test
+     */
+    public function ifIncludedInAForViewHelperTheWidgetsKeepTheirDifferentContext(): void
+    {
+        $response = $this->browser->request('http://localhost/test/widget/ajaxtest/forIndex');
+        [$_, $confirmation, $ajaxWidgetUri, $_, $_, $_, $secondConfirmation, $secondAjaxWidgetUri, ] = explode(chr(10), $response->getBody());
+        self::assertSame('SomeAjaxController::indexAction(option1: "first0", option2: "second0")', \trim($confirmation));
+        self::assertSame('SomeAjaxController::indexAction(option1: "first1", option2: "second1")', \trim($secondConfirmation));
+
+        self::assertNotEquals($ajaxWidgetUri, $secondAjaxWidgetUri);
+        $response = $this->browser->request('http://localhost/' . $ajaxWidgetUri);
+        self::assertSame('SomeAjaxController::ajaxAction("first0", "second0")', trim($response->getBody()->getContents()));
+        $response = $this->browser->request('http://localhost/' . $secondAjaxWidgetUri);
+        self::assertSame('SomeAjaxController::ajaxAction("first1", "second1")', trim($response->getBody()->getContents()));
     }
 
     /**

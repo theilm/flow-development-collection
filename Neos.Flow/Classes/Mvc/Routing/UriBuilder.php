@@ -73,16 +73,18 @@ class UriBuilder
 
     /**
      * @var boolean
+     * @deprecated with Flow 9.0
      */
     protected $addQueryString = false;
 
     /**
      * @var array
+     * @deprecated with Flow 9.0
      */
     protected $argumentsToBeExcludedFromQueryString = [];
 
     /**
-     * @var string
+     * @var string|null
      */
     protected $format = null;
 
@@ -159,18 +161,18 @@ class UriBuilder
     /**
      * Specifies the format of the target (e.g. "html" or "xml")
      *
-     * @param string $format (e.g. "html" or "xml"), will be transformed to lowercase!
+     * @param string|null $format (e.g. "html" or "xml"), will be transformed to lowercase!
      * @return UriBuilder the current UriBuilder to allow method chaining
      * @api
      */
     public function setFormat($format)
     {
-        $this->format = strtolower($format);
+        $this->format = $format !== null ? strtolower($format) : null;
         return $this;
     }
 
     /**
-     * @return string
+     * @return string|null
      * @api
      */
     public function getFormat()
@@ -205,7 +207,7 @@ class UriBuilder
      *
      * @param boolean $addQueryString
      * @return UriBuilder the current UriBuilder to allow method chaining
-     * @api
+     * @deprecated with Flow 9.0
      */
     public function setAddQueryString($addQueryString)
     {
@@ -215,7 +217,7 @@ class UriBuilder
 
     /**
      * @return boolean
-     * @api
+     * @deprecated with Flow 9.0
      */
     public function getAddQueryString()
     {
@@ -228,7 +230,7 @@ class UriBuilder
      *
      * @param array $argumentsToBeExcludedFromQueryString
      * @return UriBuilder the current UriBuilder to allow method chaining
-     * @api
+     * @deprecated with Flow 9.0
      */
     public function setArgumentsToBeExcludedFromQueryString(array $argumentsToBeExcludedFromQueryString)
     {
@@ -238,7 +240,7 @@ class UriBuilder
 
     /**
      * @return array
-     * @api
+     * @deprecated with Flow 9.0
      */
     public function getArgumentsToBeExcludedFromQueryString()
     {
@@ -279,17 +281,17 @@ class UriBuilder
      * Creates an URI used for linking to an Controller action.
      *
      * @param string $actionName Name of the action to be called
-     * @param array $controllerArguments Additional query parameters. Will be merged with $this->arguments.
-     * @param string $controllerName Name of the target controller. If not set, current ControllerName is used.
-     * @param string $packageKey Name of the target package. If not set, current Package is used.
-     * @param string $subPackageKey Name of the target SubPackage. If not set, current SubPackage is used.
+     * @param array<string, mixed> $controllerArguments Additional routing arguments. Will be merged with $this->arguments.
+     * @param string|null $controllerName Name of the target controller. If not set, current ControllerName is used.
+     * @param string|null $packageKey Name of the target package. If not set, current Package is used.
+     * @param string|null $subPackageKey Name of the target SubPackage. If not set, current SubPackage is used.
      * @return string the rendered URI
      * @api
      * @see build()
      * @throws Exception\MissingActionNameException if $actionName parameter is empty
      * @throws \Neos\Flow\Http\Exception
      */
-    public function uriFor(string $actionName, array $controllerArguments = [], string $controllerName = null, string $packageKey = null, string $subPackageKey = null)
+    public function uriFor(string $actionName, array $controllerArguments = [], ?string $controllerName = null, ?string $packageKey = null, ?string $subPackageKey = null)
     {
         if (empty($actionName)) {
             throw new Exception\MissingActionNameException('The URI Builder could not build a URI linking to an action controller because no action name was specified. Please check the stack trace to see which code or template was requesting the link and check the arguments passed to the URI Builder.', 1354629891);

@@ -178,6 +178,25 @@ class PdoBackendTest extends BaseTestCase
     /**
      * @test
      */
+    public function flushByTagsRemovesCacheEntriesWithSpecifiedTags()
+    {
+        $backend = $this->setUpBackend();
+
+        $data = 'some data' . microtime();
+        $backend->set('PdoBackendTest1', $data, ['UnitTestTag%test', 'UnitTestTag%boring']);
+        $backend->set('PdoBackendTest2', $data, ['UnitTestTag%test', 'UnitTestTag%special']);
+        $backend->set('PdoBackendTest3', $data, ['UnitTestTag%test']);
+
+        $backend->flushByTags(['UnitTestTag%boring', 'UnitTestTag%special']);
+
+        self::assertFalse($backend->has('PdoBackendTest1'), 'PdoBackendTest1');
+        self::assertFalse($backend->has('PdoBackendTest2'), 'PdoBackendTest2');
+        self::assertTrue($backend->has('PdoBackendTest3'), 'PdoBackendTest3');
+    }
+
+    /**
+     * @test
+     */
     public function flushRemovesAllCacheEntries()
     {
         $backend = $this->setUpBackend();
@@ -215,6 +234,101 @@ class PdoBackendTest extends BaseTestCase
 
         self::assertEquals('Hello', $thisBackend->get('thisEntry'));
         self::assertFalse($thatBackend->has('thatEntry'));
+    }
+
+    /**
+     * @test
+     */
+    public function iterationOverEmptyCacheYieldsNoData()
+    {
+        $backend = $this->setUpBackend();
+        $data = \iterator_to_array($backend);
+        self::assertEmpty($data);
+    }
+
+    /**
+     * @test
+     */
+    public function iterationOverNotEmptyCacheYieldsData()
+    {
+        $backend = $this->setUpBackend();
+
+        $backend->set('first', 'firstData');
+        $backend->set('second', 'secondData');
+
+        $data = \iterator_to_array($backend);
+        self::assertEquals(
+            ['first' => 'firstData', 'second' => 'secondData'],
+            $data
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function iterationResetsWhenDataIsSet()
+    {
+        $backend = $this->setUpBackend();
+
+        $backend->set('first', 'firstData');
+        $backend->set('second', 'secondData');
+        \iterator_to_array($backend);
+
+        $backend->set('third', 'thirdData');
+
+        $data = \iterator_to_array($backend);
+        self::assertEquals(
+            ['first' => 'firstData', 'second' => 'secondData', 'third' => 'thirdData'],
+            $data
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function iterationResetsWhenDataFlushed()
+    {
+        $backend = $this->setUpBackend();
+
+        $backend->set('first', 'firstData');
+        \iterator_to_array($backend);
+
+        $backend->flush();
+
+        $data = \iterator_to_array($backend);
+        self::assertEmpty($data);
+    }
+
+    /**
+     * @test
+     */
+    public function iterationResetsWhenDataFlushedByTag()
+    {
+        $backend = $this->setUpBackend();
+
+        $backend->set('first', 'firstData', ['tag']);
+        \iterator_to_array($backend);
+
+        $backend->flushByTag('tag');
+
+        $data = \iterator_to_array($backend);
+        self::assertEmpty($data);
+    }
+
+    /**
+     * @test
+     */
+    public function iterationResetsWhenDataGetsRemoved()
+    {
+        $backend = $this->setUpBackend();
+
+        $backend->set('first', 'firstData');
+        \iterator_to_array($backend);
+
+        $backend->remove('first');
+
+        $data = \iterator_to_array($backend);
+        self::assertEmpty($data);
     }
 
     /**

@@ -11,9 +11,8 @@ namespace Neos\Flow\Persistence\Doctrine;
  * source code.
  */
 
-use Doctrine\DBAL\Exception\ConnectionException;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\ORMException;
+use Doctrine\ORM\Exception\ORMException;
 use Doctrine\ORM\Tools\SchemaTool;
 use Doctrine\ORM\Tools\ToolsException;
 use Doctrine\ORM\UnitOfWork;
@@ -21,10 +20,12 @@ use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Log\ThrowableStorageInterface;
 use Neos\Flow\Log\Utility\LogEnvironment;
 use Neos\Flow\Persistence\AbstractPersistenceManager;
+use Neos\Flow\Persistence\Aspect\PersistenceMagicInterface;
 use Neos\Flow\Persistence\Exception as PersistenceException;
 use Neos\Flow\Persistence\Exception\KnownObjectException;
 use Neos\Flow\Persistence\Exception\UnknownObjectException;
 use Neos\Flow\Persistence\QueryInterface;
+use Neos\Flow\ObjectManagement\DependencyInjection\DependencyProxy;
 use Neos\Flow\Reflection\ReflectionService;
 use Neos\Flow\Validation\ValidatorResolver;
 use Neos\Utility\Exception\PropertyNotAccessibleException;
@@ -52,7 +53,7 @@ class PersistenceManager extends AbstractPersistenceManager
     protected $throwableStorage;
 
     /**
-     * @Flow\Inject(lazy=false)
+     * @Flow\Inject
      * @var EntityManagerInterface
      */
     protected $entityManager;
@@ -84,39 +85,45 @@ class PersistenceManager extends AbstractPersistenceManager
      * Commits new objects and changes to objects in the current persistence
      * session into the backend
      *
-     * @param boolean $onlyAllowedObjects If true an exception will be thrown if there are scheduled updates/deletes or insertions for objects that are not "allowed" (see AbstractPersistenceManager::allowObject())
+     * @param boolean $onlyAllowedObjects If true an exception will be thrown if there are scheduled updates/deletes or insertions for objects that are not "allowed" (see AbstractPersistenceManager::allowObject()). Deprecated: Use `persistAllowedObjects()` instead.
      * @return void
-     * @throws PersistenceException
      * @api
      */
     public function persistAll(bool $onlyAllowedObjects = false): void
     {
-        if ($onlyAllowedObjects) {
-            $unitOfWork = $this->entityManager->getUnitOfWork();
-            $unitOfWork->computeChangeSets();
-            $objectsToBePersisted = $unitOfWork->getScheduledEntityUpdates() + $unitOfWork->getScheduledEntityDeletions() + $unitOfWork->getScheduledEntityInsertions();
-            foreach ($objectsToBePersisted as $object) {
-                $this->throwExceptionIfObjectIsNotAllowed($object);
-            }
+        if ($onlyAllowedObjects === true) {
+            $this->persistAllowedObjects();
+            return;
         }
-
         if (!$this->entityManager->isOpen()) {
             $this->logger->error('persistAll() skipped flushing data, the Doctrine EntityManager is closed. Check the logs for error message.', LogEnvironment::fromMethodName(__METHOD__));
             return;
         }
 
-        $connection = $this->entityManager->getConnection();
-        try {
-            if ($connection->ping() === false) {
-                $this->logger->info('Reconnecting the Doctrine EntityManager to the persistence backend.', LogEnvironment::fromMethodName(__METHOD__));
-                $connection->close();
-                $connection->connect();
-            }
-        } catch (ConnectionException $exception) {
-            $message = $this->throwableStorage->logThrowable($exception);
+        $this->allowedObjects->checkNext(false);
+        $this->entityManager->flush();
+        $this->emitAllObjectsPersisted();
+    }
+
+    /**
+     * Commits new objects and changes to objects in the current persistence
+     * session into the backend.
+     * An exception will be thrown if there are scheduled updates/deletes or
+     * insertions for objects that are not "allowed" (see AbstractPersistenceManager::allowObject())
+     *
+     * @return void
+     * @throws PersistenceException
+     * @api
+     */
+    public function persistAllowedObjects(): void
+    {
+        if (!$this->entityManager->isOpen()) {
+            $message = $this->throwableStorage->logThrowable(new PersistenceException('persistAll() skipped flushing data, the Doctrine EntityManager is closed. Check the logs for error messages.', 1643015626));
             $this->logger->error($message, LogEnvironment::fromMethodName(__METHOD__));
+            return;
         }
 
+        $this->allowedObjects->checkNext(true);
         $this->entityManager->flush();
         $this->emitAllObjectsPersisted();
     }
@@ -144,7 +151,11 @@ class PersistenceManager extends AbstractPersistenceManager
      */
     public function isNewObject($object): bool
     {
-        return ($this->entityManager->getUnitOfWork()->getEntityState($object, UnitOfWork::STATE_NEW) === UnitOfWork::STATE_NEW);
+        if (!$object instanceof PersistenceMagicInterface) {
+            return true;
+        }
+
+        return ($this->entityManager->getUnitOfWork()->getEntityState($object) === UnitOfWork::STATE_NEW);
     }
 
     /**
@@ -183,15 +194,14 @@ class PersistenceManager extends AbstractPersistenceManager
      * backend. Otherwise NULL is returned.
      *
      * @param mixed $identifier
-     * @param string|null $objectType
-     * @psalm-param class-string|null $objectType
+     * @param class-string|null $objectType
      * @param boolean $useLazyLoading Set to true if you want to use lazy loading for this object
      * @return object|null The object for the identifier if it is known, or NULL
      * @throws \RuntimeException
      * @throws ORMException
      * @api
      */
-    public function getObjectByIdentifier($identifier, string $objectType = null, bool $useLazyLoading = false)
+    public function getObjectByIdentifier($identifier, ?string $objectType = null, bool $useLazyLoading = false)
     {
         if ($objectType === null) {
             throw new \RuntimeException('Using only the identifier is not supported by Doctrine 2. Give classname as well or use repository to query identifier.', 1296646103);
@@ -297,6 +307,9 @@ class PersistenceManager extends AbstractPersistenceManager
         // "driver" is used only for Doctrine, thus we (mis-)use it here
         // additionally, when no path is set, skip this step, assuming no DB is needed
         if ($this->settings['backendOptions']['driver'] !== null && $this->settings['backendOptions']['path'] !== null) {
+            if ($this->entityManager instanceof DependencyProxy) {
+                $this->entityManager->_activateDependency();
+            }
             $schemaTool = new SchemaTool($this->entityManager);
             if ($this->settings['backendOptions']['driver'] === 'pdo_sqlite') {
                 $schemaTool->createSchema($this->entityManager->getMetadataFactory()->getAllMetadata());

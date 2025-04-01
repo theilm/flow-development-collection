@@ -112,16 +112,17 @@ class StringHelper implements ProtectedContextAwareInterface
      *
      * @param string $string The string
      * @param string $search A string to search
-     * @param integer $position Optional position for limiting the string
+     * @param int|null $position Optional position for limiting the string
      * @return boolean true if the string ends with the given search
      */
     public function endsWith($string, $search, $position = null)
     {
         $string = (string)$string;
+        $search = (string)$search;
 
-        $position = $position !== null ? $position : mb_strlen($string, 'UTF-8');
+        $position = $position ?? mb_strlen($string, 'UTF-8');
         $position = $position - mb_strlen($search, 'UTF-8');
-        return mb_strrpos($string, $search, null, 'UTF-8') === $position;
+        return mb_strrpos($string, $search, 0, 'UTF-8') === $position;
     }
 
     /**
@@ -229,7 +230,7 @@ class StringHelper implements ProtectedContextAwareInterface
      *
      * @param string $string The input string
      * @param string $pattern A PREG pattern
-     * @return array The matches as array or NULL if not matched
+     * @return array|null The matches as array or NULL if not matched
      * @throws EvaluationException
      */
     public function pregMatch($string, $pattern)
@@ -254,7 +255,7 @@ class StringHelper implements ProtectedContextAwareInterface
      *
      * @param string $string The input string
      * @param string $pattern A PREG pattern
-     * @return array The matches as array or NULL if not matched
+     * @return array|null The matches as array or NULL if not matched
      * @throws EvaluationException
      */
     public function pregMatchAll($string, $pattern)
@@ -305,9 +306,9 @@ class StringHelper implements ProtectedContextAwareInterface
      * @param integer $limit The maximum amount of items to return, in contrast to split() this will return all remaining characters in the last item (see example)
      * @return array An array of the splitted parts, excluding the matched pattern
      */
-    public function pregSplit($string, $pattern, $limit = null)
+    public function pregSplit($string, $pattern, $limit = -1)
     {
-        return preg_split($pattern, (string)$string, $limit);
+        return preg_split($pattern, (string)$string, (int)$limit);
     }
 
     /**
@@ -316,17 +317,23 @@ class StringHelper implements ProtectedContextAwareInterface
      * Example::
      *
      *     String.replace("canal", "ana", "oo") == "cool"
+     *     String.replace("cool gridge", ["oo", "gri"], ["ana", "bri"]) == "canal bridge"
      *
      * Note: this method does not perform regular expression matching, @see pregReplace().
      *
-     * @param string $string The input string
-     * @param string $search A search string
-     * @param string $replace A replacement string
-     * @return string The string with all occurrences replaced
+     * @param array|string|null $string The input string
+     * @param array|string|null $search A search string
+     * @param array|string|null $replace A replacement string
+     * @return array|string|string[] The string with all occurrences replaced
      */
     public function replace($string, $search, $replace)
     {
-        return str_replace($search, $replace, (string)$string);
+        // Replace null values with empty strings
+        $string = is_array($string) ? $string : (string) $string;
+        $search = is_array($search) ? $search : (string) $search;
+        $replace = is_array($replace) ? $replace : (string) $replace;
+
+        return str_replace($search, $replace, $string);
     }
 
     /**
@@ -340,8 +347,8 @@ class StringHelper implements ProtectedContextAwareInterface
      * Node: This implementation follows JavaScript semantics without support of regular expressions.
      *
      * @param string $string The string to split
-     * @param string $separator The separator where the string should be splitted
-     * @param integer $limit The maximum amount of items to split (exceeding items will be discarded)
+     * @param string|null $separator The separator where the string should be splitted
+     * @param int|null $limit The maximum amount of items to split (exceeding items will be discarded)
      * @return array An array of the splitted parts, excluding the separators
      */
     public function split($string, $separator = null, $limit = null)
@@ -382,8 +389,8 @@ class StringHelper implements ProtectedContextAwareInterface
      */
     public function startsWith($string, $search, $position = null)
     {
-        $position = $position !== null ? $position : 0;
-        return mb_strpos((string)$string, $search, null, 'UTF-8') === $position;
+        $position = $position ?? 0;
+        return mb_strpos((string)$string, (string)$search, 0, 'UTF-8') === $position;
     }
 
     /**
@@ -448,7 +455,7 @@ class StringHelper implements ProtectedContextAwareInterface
      * This is a wrapper for the strip_tags() PHP function.
      *
      * @param string $string The string to strip
-     * @param string $allowableTags Specify tags which should not be stripped
+     * @param string|null $allowableTags Specify tags which should not be stripped
      * @return string The string with tags stripped
      */
     public function stripTags($string, $allowableTags = null)
@@ -543,7 +550,7 @@ class StringHelper implements ProtectedContextAwareInterface
     /**
      * Convert a string to boolean
      *
-     * A value is ``true``, if it is either the string ``"true"`` or ``"true"`` or the number ``1``.
+     * A value is ``true``, if it is either the string ``"true"`` or ``"TRUE"`` or the number ``1``.
      *
      * @param string $string The string to convert
      * @return boolean The boolean value of the string (``true`` or ``false``)

@@ -264,7 +264,7 @@ class StringHelperTest extends UnitTestCase
     public function pregSplitExamples()
     {
         return [
-            'matches' => ['foo bar   baz', '/\s+/', null, ['foo', 'bar', 'baz']],
+            'matches' => ['foo bar   baz', '/\s+/', -1, ['foo', 'bar', 'baz']],
             'matches with limit' => ['first second third', '/\s+/', 2, ['first', 'second third']]
         ];
     }
@@ -284,6 +284,7 @@ class StringHelperTest extends UnitTestCase
     {
         return [
             'replace' => ['canal', 'ana', 'oo', 'cool'],
+            'replace-array' => ['cool gridge', ['oo', 'gri'], ['ana', 'bri'], 'canal bridge'],
             'no match' => ['canal', 'x', 'y', 'canal'],
             'unicode replacement' => ['Öaßaü', 'aßa', 'g', 'Ögü']
         ];
@@ -537,7 +538,7 @@ class StringHelperTest extends UnitTestCase
     public function htmlSpecialCharsExamples()
     {
         return [
-            'encode entities' => ['Foo &amp; Bar', null, 'Foo &amp;amp; Bar'],
+            'encode entities' => ['Foo &amp; Bar', false, 'Foo &amp;amp; Bar'],
             'preserve entities' => ['Foo &amp; <a href="#">Bar</a>', true, 'Foo &amp; &lt;a href="#"&gt;Bar&lt;/a&gt;']
         ];
     }
@@ -587,7 +588,7 @@ class StringHelperTest extends UnitTestCase
             'subject is not modified if run without options' => [
                 'methodName' => 'crop',
                 'maximumCharacters' => null,
-                'suffixString' => null,
+                'suffixString' => '',
                 'text' => 'Kasper Skårhøj implemented the original version of the crop function.',
                 'expected' => 'Kasper Skårhøj implemented the original version of the crop function.'
             ]

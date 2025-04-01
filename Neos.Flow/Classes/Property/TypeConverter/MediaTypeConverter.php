@@ -27,7 +27,7 @@ use Neos\Utility\MediaTypes;
 class MediaTypeConverter extends AbstractTypeConverter implements MediaTypeConverterInterface
 {
     /**
-     * @var string
+     * @var array<string>
      */
     protected $sourceTypes = ['string'];
 
@@ -53,7 +53,7 @@ class MediaTypeConverter extends AbstractTypeConverter implements MediaTypeConve
      * @return array|string|integer Note that this TypeConverter may return a non-array in case of JSON media type, even though he declares to only convert to array
      * @api
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
         $mediaType = null;
         if ($configuration !== null) {
@@ -90,22 +90,19 @@ class MediaTypeConverter extends AbstractTypeConverter implements MediaTypeConve
                 if ($result === null) {
                     return [];
                 }
-            break;
+                break;
             case 'xml':
-                $entityLoaderValue = libxml_disable_entity_loader(true);
                 try {
                     $xmlElement = new \SimpleXMLElement(urldecode($requestBody), LIBXML_NOERROR);
-                    libxml_disable_entity_loader($entityLoaderValue);
                 } catch (\Exception $exception) {
-                    libxml_disable_entity_loader($entityLoaderValue);
                     return [];
                 }
                 $result = Arrays::convertObjectToArray($xmlElement);
-            break;
+                break;
             case 'x-www-form-urlencoded':
             default:
                 parse_str($requestBody, $result);
-            break;
+                break;
         }
         return $result;
     }

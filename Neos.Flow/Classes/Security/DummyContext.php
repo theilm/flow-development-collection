@@ -40,18 +40,18 @@ class DummyContext extends Context
     protected $tokens = [];
 
     /**
-     * @var string
+     * @var string|null
      */
-    protected $csrfProtectionToken;
+    protected $csrfProtectionToken = null;
 
     /**
-     * @var ActionRequest
+     * @var ActionRequest|null
      */
-    protected $interceptedRequest;
+    protected $interceptedRequest = null;
 
     /**
      * @Flow\Transient
-     * @var Role[]
+     * @var Role[]|null
      */
     protected $roles = null;
 
@@ -222,7 +222,7 @@ class DummyContext extends Context
      * @return void
      * @Flow\Session(autoStart=true)
      */
-    public function setInterceptedRequest(ActionRequest $interceptedRequest = null)
+    public function setInterceptedRequest(?ActionRequest $interceptedRequest = null)
     {
         $this->interceptedRequest = $interceptedRequest;
     }

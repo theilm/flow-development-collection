@@ -86,7 +86,7 @@ abstract class AbstractTypeConverter implements TypeConverterInterface
      * @return string
      * @api
      */
-    public function getTargetTypeForSource($source, $originalTargetType, PropertyMappingConfigurationInterface $configuration = null)
+    public function getTargetTypeForSource($source, $originalTargetType, ?PropertyMappingConfigurationInterface $configuration = null)
     {
         return $originalTargetType;
     }
@@ -133,10 +133,11 @@ abstract class AbstractTypeConverter implements TypeConverterInterface
      * @param string $targetType
      * @param string $propertyName
      * @param PropertyMappingConfigurationInterface $configuration
-     * @return string
+     * @return string|null
      * @api
      */
     public function getTypeOfChildProperty($targetType, $propertyName, PropertyMappingConfigurationInterface $configuration)
     {
+        return null;
     }
 }

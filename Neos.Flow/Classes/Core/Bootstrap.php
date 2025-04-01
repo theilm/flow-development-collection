@@ -31,11 +31,6 @@ use Neos\Utility\Files;
  */
 class Bootstrap
 {
-    /**
-     * Required PHP version
-     */
-    const MINIMUM_PHP_VERSION = '7.3.0';
-
     const RUNLEVEL_COMPILETIME = 'Compiletime';
     const RUNLEVEL_RUNTIME = 'Runtime';
 
@@ -45,12 +40,12 @@ class Bootstrap
     protected $context;
 
     /**
-     * @var array
+     * @var array<class-string<RequestHandlerInterface>, RequestHandlerInterface>
      */
     protected $requestHandlers = [];
 
     /**
-     * @var string
+     * @var class-string<RequestHandlerInterface>
      */
     protected $preselectedRequestHandlerClassName;
 
@@ -67,12 +62,12 @@ class Bootstrap
     public static $staticObjectManager;
 
     /**
-     * @var array
+     * @var array<string, true>
      */
     protected $compiletimeCommands = [];
 
     /**
-     * @var array
+     * @var array<string|class-string, object>
      */
     protected $earlyInstances = [];
 
@@ -82,7 +77,7 @@ class Bootstrap
      * @param string $context The application context, for example "Production" or "Development"
      * @param \Composer\Autoload\ClassLoader $composerAutoloader Composer autoloader
      */
-    public function __construct(string $context, \Composer\Autoload\ClassLoader $composerAutoloader = null)
+    public function __construct(string $context, ?\Composer\Autoload\ClassLoader $composerAutoloader = null)
     {
         // Load the composer autoloader first if not provided
         $composerAutoloader = $composerAutoloader ?? require(__DIR__ . '/../../../../Libraries/autoload.php');
@@ -167,7 +162,7 @@ class Bootstrap
      * it will be used if it can handle the request – regardless of the priority
      * of this or other request handlers.
      *
-     * @param string $className
+     * @param class-string<RequestHandlerInterface> $className
      */
     public function setPreselectedRequestHandlerClassName(string $className)
     {
@@ -338,12 +333,11 @@ class Bootstrap
      * On finalizing the Object Manager initialization, all those instances will
      * be transferred to the Object Manager's registry.
      *
-     * @param string $objectName Object name, as later used by the Object Manager
+     * @param string|class-string $objectName Object name, as later used by the Object Manager
      * @param object $instance The instance to register
-     * @return void
      * @api
      */
-    public function setEarlyInstance(string $objectName, $instance)
+    public function setEarlyInstance(string $objectName, object $instance): void
     {
         $this->earlyInstances[$objectName] = $instance;
     }
@@ -356,14 +350,16 @@ class Bootstrap
      */
     public function getSignalSlotDispatcher(): Dispatcher
     {
-        return $this->earlyInstances[Dispatcher::class];
+        return $this->getEarlyInstance(Dispatcher::class);
     }
 
     /**
      * Returns an instance which was registered earlier through setEarlyInstance()
      *
-     * @param string $objectName Object name of the registered instance
-     * @return object
+     * @template T of object
+     * @param class-string<T>|string $objectName Object name of the registered instance
+     * @phpstan-return ($objectName is class-string<T> ? T : object)
+     * @return T
      * @throws FlowException
      * @api
      */
@@ -378,7 +374,7 @@ class Bootstrap
     /**
      * Returns all registered early instances indexed by object name
      *
-     * @return array
+     * @return array<string|class-string, object>
      */
     public function getEarlyInstances(): array
     {
@@ -393,11 +389,11 @@ class Bootstrap
      */
     public function getObjectManager(): ObjectManagerInterface
     {
-        if (!isset($this->earlyInstances[ObjectManagerInterface::class])) {
-            debug_print_backtrace();
+        try {
+            return $this->getEarlyInstance(ObjectManagerInterface::class);
+        } catch (FlowException) {
             throw new FlowException('The Object Manager is not available at this stage of the bootstrap run.', 1301120788);
         }
-        return $this->earlyInstances[ObjectManagerInterface::class];
     }
 
     /**
@@ -409,14 +405,12 @@ class Bootstrap
     protected function resolveRequestHandler(): RequestHandlerInterface
     {
         if ($this->preselectedRequestHandlerClassName !== null && isset($this->requestHandlers[$this->preselectedRequestHandlerClassName])) {
-            /** @var RequestHandlerInterface $requestHandler */
             $requestHandler = $this->requestHandlers[$this->preselectedRequestHandlerClassName];
             if ($requestHandler->canHandleRequest()) {
                 return $requestHandler;
             }
         }
 
-        /** @var RequestHandlerInterface $requestHandler */
         foreach ($this->requestHandlers as $requestHandler) {
             if ($requestHandler->canHandleRequest() > 0) {
                 $priority = $requestHandler->getPriority();
@@ -441,7 +435,7 @@ class Bootstrap
      */
     protected function emitFinishedCompiletimeRun()
     {
-        $this->earlyInstances[Dispatcher::class]->dispatch(__CLASS__, 'finishedCompiletimeRun', []);
+        $this->getSignalSlotDispatcher()->dispatch(__CLASS__, 'finishedCompiletimeRun', []);
     }
 
     /**
@@ -452,7 +446,7 @@ class Bootstrap
      */
     protected function emitFinishedRuntimeRun()
     {
-        $this->earlyInstances[Dispatcher::class]->dispatch(__CLASS__, 'finishedRuntimeRun', []);
+        $this->getSignalSlotDispatcher()->dispatch(__CLASS__, 'finishedRuntimeRun', []);
     }
 
     /**
@@ -464,7 +458,7 @@ class Bootstrap
      */
     protected function emitBootstrapShuttingDown(string $runLevel)
     {
-        $this->earlyInstances[Dispatcher::class]->dispatch(__CLASS__, 'bootstrapShuttingDown', [$runLevel]);
+        $this->getSignalSlotDispatcher()->dispatch(__CLASS__, 'bootstrapShuttingDown', [$runLevel]);
     }
 
     /**
@@ -503,6 +497,7 @@ class Bootstrap
                 $expectedPath = Files::getUnixStylePath(realpath(FLOW_PATH_FLOW)) . '/';
                 if ($testPath !== $expectedPath) {
                     echo('Flow: Invalid root path. (Error #1248964375)' . PHP_EOL . '"' . $testPath . '" does not lead to' . PHP_EOL . '"' . $expectedPath . '"' . PHP_EOL);
+                    http_response_code(500);
                     exit(1);
                 }
                 define('FLOW_PATH_ROOT', $rootPath);
@@ -540,15 +535,7 @@ class Bootstrap
             define('FLOW_PATH_TEMPORARY', $temporaryDirectoryPath);
         }
 
-        // Setting this flag to false will enable the custom Class Loader on top of the default autoloading provided by composer
-        // @deprecated since Version 4.3. Packages should use the default composer autoloading mechanism
-        $onlyUseComposerAutoLoaderForPackageClasses = true;
-        if (in_array(self::getEnvironmentConfigurationSetting('FLOW_ONLY_COMPOSER_LOADER'), [false, 'false', 0, '0'])) {
-            $onlyUseComposerAutoLoaderForPackageClasses = false;
-        }
-
-        define('FLOW_ONLY_COMPOSER_LOADER', $onlyUseComposerAutoLoaderForPackageClasses);
-        define('FLOW_VERSION_BRANCH', 'dev-master');
+        define('FLOW_VERSION_BRANCH', '9.0');
         define('FLOW_APPLICATION_CONTEXT', (string)$this->context);
     }
 
@@ -559,26 +546,20 @@ class Bootstrap
      */
     protected function ensureRequiredEnvironment()
     {
-        if (version_compare(phpversion(), self::MINIMUM_PHP_VERSION, '<')) {
-            echo('Flow requires PHP version ' . self::MINIMUM_PHP_VERSION . ' or higher but your installed version is currently ' . phpversion() . '. (Error #1172215790)' . PHP_EOL);
-            exit(1);
-        }
-        if (!extension_loaded('mbstring')) {
-            echo('Flow requires the PHP extension "mbstring" (Error #1207148809)' . PHP_EOL);
-            exit(1);
-        }
         if (DIRECTORY_SEPARATOR !== '/' && PHP_WINDOWS_VERSION_MAJOR < 6) {
             echo('Flow does not support Windows versions older than Windows Vista or Windows Server 2008 (Error #1312463704)' . PHP_EOL);
+            http_response_code(500);
             exit(1);
         }
-
         if (!extension_loaded('Reflection')) {
             echo('The PHP extension "Reflection" is required by Flow.' . PHP_EOL);
+            http_response_code(500);
             exit(1);
         }
         $method = new \ReflectionMethod(__CLASS__, __FUNCTION__);
         if ($method->getDocComment() === false || $method->getDocComment() === '') {
             echo('Reflection of doc comments is not supported by your PHP setup. Please check if you have installed an accelerator which removes doc comments.' . PHP_EOL);
+            http_response_code(500);
             exit(1);
         }
 
@@ -591,12 +572,14 @@ class Bootstrap
         if (!is_dir(FLOW_PATH_DATA) && !is_link(FLOW_PATH_DATA)) {
             if (!@mkdir(FLOW_PATH_DATA)) {
                 echo('Flow could not create the directory "' . FLOW_PATH_DATA . '". Please check the file permissions manually or run "sudo ./flow flow:core:setfilepermissions" to fix the problem. (Error #1347526552)');
+                http_response_code(500);
                 exit(1);
             }
         }
         if (!is_dir(FLOW_PATH_DATA . 'Persistent') && !is_link(FLOW_PATH_DATA . 'Persistent')) {
             if (!@mkdir(FLOW_PATH_DATA . 'Persistent')) {
                 echo('Flow could not create the directory "' . FLOW_PATH_DATA . 'Persistent". Please check the file permissions manually or run "sudo ./flow flow:core:setfilepermissions" to fix the problem. (Error #1347526553)');
+                http_response_code(500);
                 exit(1);
             }
         }
@@ -605,6 +588,7 @@ class Bootstrap
             $oldMask = umask(000);
             if (!@mkdir(FLOW_PATH_TEMPORARY, 0777, true)) {
                 echo('Flow could not create the directory "' . FLOW_PATH_TEMPORARY . '". Please check the file permissions manually or run "sudo ./flow flow:core:setfilepermissions" to fix the problem. (Error #1441354578)');
+                http_response_code(500);
                 exit(1);
             }
             umask($oldMask);
@@ -620,7 +604,7 @@ class Bootstrap
      * - $_SERVER[REDIRECT_ . $variableName] (again for php cgi environments)
      *
      * @param string $variableName
-     * @return string or NULL if this variable was not set at all.
+     * @return string|null NULL if this variable was not set at all.
      */
     public static function getEnvironmentConfigurationSetting(string $variableName)
     {

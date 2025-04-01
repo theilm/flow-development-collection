@@ -56,13 +56,13 @@ interface FrontendInterface
      * @return void
      * @api
      */
-    public function set(string $entryIdentifier, $data, array $tags = [], int $lifetime = null);
+    public function set(string $entryIdentifier, $data, array $tags = [], ?int $lifetime = null);
 
     /**
      * Finds and returns data from the cache.
      *
      * @param string $entryIdentifier Something which identifies the cache entry - depends on concrete cache
-     * @return mixed
+     * @return mixed The value or false if the cache entry could not be loaded
      * @api
      */
     public function get(string $entryIdentifier);
@@ -104,10 +104,19 @@ interface FrontendInterface
      * Removes all cache entries of this cache which are tagged by the specified tag.
      *
      * @param string $tag The tag the entries must have
-     * @return integer The number of entries which have been affected by this flush or NULL if the number is unknown
+     * @return integer The number of entries which have been affected by this flush
      * @api
      */
     public function flushByTag(string $tag): int;
+
+    /**
+     * Removes all cache entries of this cache which are tagged by any of the specified tags.
+     *
+     * @param array<string> $tags The tags the entries must have
+     * @return integer The number of entries which have been affected by this flush
+     * @api
+     */
+    public function flushByTags(array $tags): int;
 
     /**
      * Does garbage collection

@@ -130,14 +130,18 @@ An example configuration could look like in the following Settings.yaml excerpt:
               notFoundExceptions:
                 matchingStatusCodes: [404]
                 options:
-                  templatePathAndFilename: 'resource://Neos.Flow/Private/Templates/Error/Default.html'
+                  viewClassName: 'Neos\FluidAdaptor\View\StandaloneView'
+                  viewOptions:
+                    templatePathAndFilename: 'resource://Neos.Flow/Private/Templates/Error/Default.html'
                   variables:
                     errorDescription: 'Sorry, the page you requested was not found.'
 
               databaseConnectionExceptions:
                 matchingExceptionClassNames: ['Neos\Flow\Persistence\Doctrine\DatabaseConnectionException']
                 options:
-                  templatePathAndFilename: 'resource://Neos.Flow/Private/Templates/Error/Default.html'
+                  viewClassName: 'Neos\FluidAdaptor\View\StandaloneView'
+                  viewOptions:
+                    templatePathAndFilename: 'resource://Neos.Flow/Private/Templates/Error/Default.html'
                   variables:
                     errorDescription: 'Sorry, the database connection couldn''t be established.'
 
@@ -149,7 +153,7 @@ An example configuration could look like in the following Settings.yaml excerpt:
 key names, their actual naming has no further implications.
 
 ``matchingStatusCodes``:
-    an array of integer values what HTTP status codes the rendering group is for
+    an array of integer values what HTTP status codes the rendering group is for. Generic exceptions will be handled as if they had a 500 status code.
 
 ``matchingExceptionClassNames``:
     an array of string values what Exception types the rendering group is for. Keep in mind that, as always
@@ -166,17 +170,11 @@ key names, their actual naming has no further implications.
         template to include more details on the error at hand. Defaults to false but is set to true
         for development context.
 
-    ``templatePathAndFilename``:
-        a resource string to the (Fluid) filename to use
+    ``viewClassName``:
+        a class name of the view that should be used
 
-    ``layoutRootPath``:
-        a resource string to the layout root path
-
-    ``partialRootPath``:
-        a resource string to the partial root path
-
-    ``format``:
-        the format to use, for example ``html`` or ``json``, if appropriate
+    ``viewOptions``:
+        an array of options handed to the view. See ``$supportedOptions`` of the used view
 
     ``variables``
         an array of additional, arbitrary variables which can be accessed in the template

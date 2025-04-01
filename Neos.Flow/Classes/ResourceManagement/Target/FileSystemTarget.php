@@ -22,7 +22,6 @@ use Neos\Flow\ResourceManagement\ResourceMetaDataInterface;
 use Neos\Flow\ResourceManagement\ResourceRepository;
 use Neos\Flow\ResourceManagement\Storage\PackageStorage;
 use Neos\Flow\ResourceManagement\Storage\StorageInterface;
-use Neos\Flow\ResourceManagement\Storage\StorageObject;
 use Neos\Utility\Files;
 use Neos\Utility\Unicode\Functions as UnicodeFunctions;
 use Neos\Flow\ResourceManagement\Target\Exception as TargetException;
@@ -44,6 +43,11 @@ class FileSystemTarget implements TargetInterface
      * @var string
      */
     protected $name;
+
+    /**
+     * @var list<\Closure(int $iteration): void>
+     */
+    protected $callbacks = [];
 
     /**
      * The path (in a filesystem) where resources are published to
@@ -167,6 +171,21 @@ class FileSystemTarget implements TargetInterface
     }
 
     /**
+     * @param \Closure(int $iteration): void $callback Function called after each resource publishing
+     */
+    public function onPublish(\Closure $callback): void
+    {
+        $this->callbacks[] = $callback;
+    }
+
+    protected function invokeOnPublishCallbacks(int $iteration): void
+    {
+        foreach ($this->callbacks as $callback) {
+            $callback($iteration);
+        }
+    }
+
+    /**
      * Checks if the PackageStorage has been previously initialized with symlinks
      * and clears them. Otherwise the original sources would be overwritten.
      *
@@ -190,22 +209,25 @@ class FileSystemTarget implements TargetInterface
      * Publishes the whole collection to this target
      *
      * @param CollectionInterface $collection The collection to publish
-     * @param callable $callback Function called after each resource publishing
      * @return void
      */
-    public function publishCollection(CollectionInterface $collection, callable $callback = null)
+    public function publishCollection(CollectionInterface $collection)
     {
         $storage = $collection->getStorage();
         $this->checkAndRemovePackageSymlinks($storage);
-        foreach ($collection->getObjects($callback) as $object) {
-            /** @var StorageObject $object */
+        $iteration = 0;
+        foreach ($collection->getObjects() as $object) {
             $sourceStream = $object->getStream();
             if ($sourceStream === false) {
                 $this->handleMissingData($object, $collection);
                 continue;
             }
+
             $this->publishFile($sourceStream, $this->getRelativePublicationPathAndFilename($object));
             fclose($sourceStream);
+
+            $this->invokeOnPublishCallbacks($iteration);
+            $iteration++;
         }
     }
 
@@ -230,8 +252,8 @@ class FileSystemTarget implements TargetInterface
     /**
      * Handle missing data notification
      *
-     * @param CollectionInterface $collection
      * @param ResourceMetaDataInterface $resource
+     * @param CollectionInterface $collection
      */
     protected function handleMissingData(ResourceMetaDataInterface $resource, CollectionInterface $collection)
     {
@@ -324,18 +346,22 @@ class FileSystemTarget implements TargetInterface
         }
 
         if (!is_writable(dirname($targetPathAndFilename))) {
-            throw new Exception(sprintf('Could not publish "%s" into resource publishing target "%s" because the target file "%s" is not writable.', $sourceStream, $this->name, $targetPathAndFilename), 1428917322, (isset($exception) ? $exception : null));
+            throw new Exception(sprintf('Could not publish "%s" into resource publishing target "%s" because the target file "%s" is not writable.', $sourceStream, $this->name, $targetPathAndFilename), 1428917322);
         }
 
         try {
-            $targetFileHandle = fopen($targetPathAndFilename, 'w');
-            $result = stream_copy_to_stream($sourceStream, $targetFileHandle);
-            fclose($targetFileHandle);
+            $targetFileHandle = fopen($targetPathAndFilename, 'wb');
+            if ($targetFileHandle === false) {
+                $result = false;
+            } else {
+                $result = stream_copy_to_stream($sourceStream, $targetFileHandle);
+                fclose($targetFileHandle);
+            }
         } catch (\Exception $exception) {
             $result = false;
         }
         if ($result === false) {
-            throw new TargetException(sprintf('Could not publish "%s" into resource publishing target "%s" because the source file could not be copied to the target location.', $sourceStream, $this->name), 1375258399, (isset($exception) ? $exception : null));
+            throw new TargetException(sprintf('Could not publish "%s" into resource publishing target "%s" because the source file could not be copied to the target location "%s".', $sourceStream, $this->name, $targetPathAndFilename), 1375258399, ($exception ?? null));
         }
 
         $this->logger->debug(sprintf('FileSystemTarget: Published file. (target: %s, file: %s)', $this->name, $relativeTargetPathAndFilename));
@@ -435,7 +461,7 @@ class FileSystemTarget implements TargetInterface
             case 'excludedExtensions':
                 $this->$key = $value;
                 break;
-            // Only for b/c - remove with next major
+                // Only for b/c - remove with next major
             case 'extensionBlacklist':
                 $this->excludedExtensions = $value;
                 break;

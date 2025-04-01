@@ -19,6 +19,7 @@ use Neos\Flow\Package\Exception\InvalidPackageKeyException;
 use Neos\Flow\Package\Exception\PackageKeyAlreadyExistsException;
 use Neos\Flow\Package\Exception\UnknownPackageException;
 use Neos\Flow\Package\FlowPackageInterface;
+use Neos\Flow\Package\FlowPackageKey;
 use Neos\Flow\Package\PackageFactory;
 use Neos\Flow\Package\PackageInterface;
 use org\bovigo\vfs\vfsStream;
@@ -164,17 +165,69 @@ class PackageManagerTest extends UnitTestCase
             file_put_contents($packagePath . 'composer.json', '{"name": "' . $packageKey . '", "type": "flow-test"}');
         }
 
-        $packageManager = $this->getAccessibleMock(PackageManager::class, ['emitPackageStatesUpdated'], ['vfs://Test/Configuration/PackageStates.php', 'vfs://Test/Packages/']);
+        $packageManager = $this->getMockBuilder(PackageManager::class)
+            ->onlyMethods(['emitPackageStatesUpdated'])
+            ->setConstructorArgs(['vfs://Test/Configuration/PackageStates.php', 'vfs://Test/Packages/'])
+            ->getMock();
 
-        $packageFactory = new PackageFactory($packageManager);
-        $this->inject($packageManager, 'packageFactory', $packageFactory);
+        // TODO is currently not required - as the packageFactory is instantiated in the constructor
+        $this->inject($packageManager, 'packageFactory', new PackageFactory());
+        $this->inject($packageManager, 'packages', []);
 
-        $packageManager->_set('packages', []);
         $packageManager->rescanPackages();
 
         $packageStates = require('vfs://Test/Configuration/PackageStates.php');
         $actualPackageKeys = array_keys($packageStates['packages']);
-        self::assertEquals(sort($expectedPackageKeys), sort($actualPackageKeys));
+        self::assertSame($expectedPackageKeys, $actualPackageKeys);
+    }
+
+    /**
+     * @test
+     */
+    public function scanAvailablePackagesTraversesThePackagesDirectoryAndRespectsPackageCollectionsAndRegistersPackagesItFinds()
+    {
+        $expectedPackageKeys = [
+            'neos/flow-test',
+            'neos/flow',
+            'neos/yetanothertestpackage'
+        ];
+
+        $packages = [
+            'Packages' => [
+                'Application' => [
+                    'Neos.Flow.Test' => [
+                        'composer.json' => '{"name": "neos/flow-test", "type": "flow-test"}'
+                    ],
+                    'FrameworkCollection' => [
+                        'composer.json' => '{"name": "neos/flow-development-collection", "type": "neos-package-collection"}',
+                        'Neos.Flow' => [
+                            'composer.json' => '{"name": "neos/flow", "type": "neos-package"}'
+                        ],
+                        'Neos.YetAnotherTestPackage' => [
+                            'composer.json' => '{"name": "neos/yetanothertestpackage", "type": "neos-package"}'
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        vfsStream::setup('Test', 0770, $packages);
+
+        $packageManager = $this->getMockBuilder(PackageManager::class)
+            ->onlyMethods(['emitPackageStatesUpdated'])
+            ->setConstructorArgs(['vfs://Test/Configuration/PackageStates.php', 'vfs://Test/Packages/'])
+            ->getMock();
+
+        // TODO is currently not required - as the packageFactory is instantiated in the constructor
+        $this->inject($packageManager, 'packageFactory', new PackageFactory());
+        $this->inject($packageManager, 'packages', []);
+
+        $packageManager->rescanPackages();
+
+        $packageStates = require('vfs://Test/Configuration/PackageStates.php');
+        $actualPackageKeys = array_keys($packageStates['packages']);
+
+        self::assertSame($expectedPackageKeys, $actualPackageKeys);
     }
 
     /**
@@ -182,14 +235,15 @@ class PackageManagerTest extends UnitTestCase
      */
     public function packageStatesConfigurationContainsRelativePaths()
     {
+        /** @var list<FlowPackageKey> $packageKeys */
         $packageKeys = [
-            'RobertLemke.Flow.NothingElse' . md5(uniqid(mt_rand(), true)),
-            'Neos.Flow' . md5(uniqid(mt_rand(), true)),
-            'Neos.YetAnotherTestPackage' . md5(uniqid(mt_rand(), true)),
+            FlowPackageKey::fromString('RobertLemke.Flow.NothingElse' . md5(uniqid(mt_rand(), true))),
+            FlowPackageKey::fromString('Neos.Flow' . md5(uniqid(mt_rand(), true))),
+            FlowPackageKey::fromString('Neos.YetAnotherTestPackage' . md5(uniqid(mt_rand(), true))),
         ];
 
         foreach ($packageKeys as $packageKey) {
-            $packagePath = 'vfs://Test/Packages/Application/' . $packageKey . '/';
+            $packagePath = 'vfs://Test/Packages/Application/' . $packageKey->value . '/';
 
             mkdir($packagePath, 0770, true);
             mkdir($packagePath . 'Classes');
@@ -200,7 +254,7 @@ class PackageManagerTest extends UnitTestCase
         $packageManager->_set('packagesBasePath', 'vfs://Test/Packages/');
         $packageManager->_set('packageInformationCacheFilePath', 'vfs://Test/Configuration/PackageStates.php');
 
-        $packageFactory = new PackageFactory($packageManager);
+        $packageFactory = new PackageFactory();
         $this->inject($packageManager, 'packageFactory', $packageFactory);
 
         $packageManager->_set('packages', []);
@@ -208,12 +262,12 @@ class PackageManagerTest extends UnitTestCase
 
         $expectedPackageStatesConfiguration = [];
         foreach ($packageKeys as $packageKey) {
-            $composerName = ComposerUtility::getComposerPackageNameFromPackageKey($packageKey);
+            $composerName = $packageKey->deriveComposerPackageName();
             $expectedPackageStatesConfiguration[$composerName] = [
-                'packagePath' => 'Application/' . $packageKey . '/',
+                'packagePath' => 'Application/' . $packageKey->value . '/',
                 'composerName' => $composerName,
                 'packageClassInformation' => ['className' => 'Neos\Flow\Package\GenericPackage', 'pathAndFilename' => ''],
-                'packageKey' => $packageKey,
+                'packageKey' => $packageKey->value,
                 'autoloadConfiguration' => []
             ];
         }
@@ -417,37 +471,5 @@ class PackageManagerTest extends UnitTestCase
     {
         $this->mockDispatcher->expects(self::once())->method('dispatch')->with(PackageManager::class, 'packageStatesUpdated');
         $this->packageManager->createPackage('Some.Package', [], 'vfs://Test/Packages/Application');
-    }
-
-    /**
-     * @test
-     */
-    public function freezePackageEmitsPackageStatesUpdatedSignal()
-    {
-        $this->mockApplicationContext->expects(self::atLeastOnce())->method('isDevelopment')->will(self::returnValue(true));
-
-        $this->packageManager->createPackage('Some.Package', [
-            'name' => 'some/package'
-        ], 'vfs://Test/Packages/Application');
-
-        $this->mockDispatcher->expects(self::once())->method('dispatch')->with(PackageManager::class, 'packageStatesUpdated');
-        $this->packageManager->freezePackage('Some.Package');
-    }
-
-    /**
-     * @test
-     */
-    public function unfreezePackageEmitsPackageStatesUpdatedSignal()
-    {
-        $this->mockApplicationContext->expects(self::atLeastOnce())->method('isDevelopment')->will(self::returnValue(true));
-
-        $this->packageManager->createPackage('Some.Package', [
-            'name' => 'some/package',
-            'type' => 'neos-package'
-        ], 'vfs://Test/Packages/Application');
-        $this->packageManager->freezePackage('Some.Package');
-
-        $this->mockDispatcher->expects(self::once())->method('dispatch')->with(PackageManager::class, 'packageStatesUpdated');
-        $this->packageManager->unfreezePackage('Some.Package');
     }
 }

@@ -17,6 +17,9 @@ use Neos\Flow\Property\TypeConverter\AbstractTypeConverter;
 /**
  * A type converter to create behat scenario table parameters. This is
  * needed when processing behat scenarios/steps in an isolated process.
+ *
+ * @deprecated todo the policy features depending on this handcrafted isolated behat test infrastructure will be refactored and this infrastructure removed.
+ * @internal only allowed to be used internally for Neos.Flow behavioral tests!
  */
 class TableNodeConverter extends AbstractTypeConverter
 {
@@ -45,7 +48,7 @@ class TableNodeConverter extends AbstractTypeConverter
      * @return TableNode
      * @api
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
         return new TableNode(json_decode($source, true));
     }

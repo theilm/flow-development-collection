@@ -27,7 +27,7 @@ use Neos\Flow\Property\PropertyMappingConfigurationInterface;
 class PersistentObjectSerializer extends AbstractTypeConverter
 {
     /**
-     * @var array
+     * @var array<string>
      */
     protected $sourceTypes = [PersistenceMagicInterface::class];
 
@@ -56,7 +56,7 @@ class PersistentObjectSerializer extends AbstractTypeConverter
      * @param PropertyMappingConfigurationInterface|null $configuration
      * @return mixed The identifier for the object if it is known, or NULL
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
         return $this->persistenceManager->getIdentifierByObject($source);
     }

@@ -11,7 +11,6 @@ namespace Neos\Flow\Persistence\Aspect;
  * source code.
  */
 
-use Doctrine\ORM\Mapping as ORM;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Aop\JoinPointInterface;
 use Neos\Flow\Persistence\PersistenceManagerInterface;
@@ -70,8 +69,8 @@ class PersistenceMagicAspect
 
     /**
      * @var string
-     * @ORM\Id
-     * @ORM\Column(length=40)
+     * @Doctrine\ORM\Mapping\Id
+     * @Doctrine\ORM\Mapping\Column(length=40)
      * @Flow\Introduce("Neos\Flow\Persistence\Aspect\PersistenceMagicAspect->isEntityOrValueObject && filter(Neos\Flow\Persistence\Doctrine\Mapping\Driver\FlowAnnotationDriver)")
      */
     protected $Persistence_Object_Identifier;
@@ -95,7 +94,7 @@ class PersistenceMagicAspect
      */
     public function generateUuid(JoinPointInterface $joinPoint)
     {
-        /** @var $proxy PersistenceMagicInterface */
+        /** @var PersistenceMagicInterface $proxy */
         $proxy = $joinPoint->getProxy();
         ObjectAccess::setProperty($proxy, 'Persistence_Object_Identifier', Algorithms::generateUUID(), true);
         $this->persistenceManager->registerNewObject($proxy);
@@ -140,20 +139,5 @@ class PersistenceMagicAspect
 
         $proxy = $joinPoint->getProxy();
         ObjectAccess::setProperty($proxy, 'Persistence_Object_Identifier', sha1($serializedSource), true);
-    }
-
-    /**
-     * Mark object as cloned after cloning.
-     *
-     * Note: this is not used by anything in the Flow base distribution,
-     * but might be needed by custom backends (like Neos.CouchDB).
-     *
-     * @param JoinPointInterface $joinPoint
-     * @return void
-     * @Flow\AfterReturning("Neos\Flow\Persistence\Aspect\PersistenceMagicAspect->isEntityOrValueObject && method(.*->__clone())")
-     */
-    public function cloneObject(JoinPointInterface $joinPoint)
-    {
-        $joinPoint->getProxy()->Flow_Persistence_clone = true;
     }
 }

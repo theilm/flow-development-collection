@@ -12,16 +12,18 @@ namespace Neos\Flow\Persistence\Doctrine;
  */
 
 use Doctrine\Common\Collections\ArrayCollection;
-use Doctrine\DBAL\DBALException;
-use Doctrine\ORM\EntityManager;
+use Doctrine\DBAL\Exception as DBALException;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\ORMException;
+use Doctrine\ORM\Exception\ORMException;
 use Doctrine\ORM\Query\Expr\Comparison;
+use Doctrine\ORM\Query\Parameter;
 use Doctrine\ORM\QueryBuilder;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Log\ThrowableStorageInterface;
 use Neos\Flow\Log\Utility\LogEnvironment;
-use Neos\Flow\Persistence\Generic\Qom\Constraint;
+use Neos\Flow\Persistence\Doctrine\Exception\DatabaseConnectionException;
+use Neos\Flow\Persistence\Doctrine\Exception\DatabaseException;
+use Neos\Flow\Persistence\Doctrine\Exception\DatabaseStructureException;
 use Neos\Flow\Persistence\QueryInterface;
 use Neos\Flow\Persistence\QueryResultInterface;
 use Neos\Utility\Unicode\Functions as UnicodeFunctions;
@@ -57,7 +59,7 @@ class Query implements QueryInterface
     protected $queryBuilder;
 
     /**
-     * @var EntityManager
+     * @var EntityManagerInterface
      */
     protected $entityManager;
 
@@ -97,7 +99,7 @@ class Query implements QueryInterface
     protected $parameterIndex = 1;
 
     /**
-     * @var array
+     * @var ArrayCollection<int, Parameter>
      */
     protected $parameters;
 
@@ -185,16 +187,16 @@ class Query implements QueryInterface
      * This should only ever be executed from the QueryResult class.
      *
      * @return array result set
-     * @throws Exception\DatabaseException
-     * @throws Exception\DatabaseConnectionException
-     * @throws Exception\DatabaseStructureException
+     * @throws DatabaseException
+     * @throws DatabaseConnectionException
+     * @throws DatabaseStructureException
      */
     public function getResult()
     {
         try {
             $query = $this->queryBuilder->getQuery();
             if ($this->cacheResult === true || $this->settings['cacheAllQueryResults']) {
-                $query->useResultCache(true);
+                $query->enableResultCache();
             }
             return $query->getResult();
         } catch (ORMException $ormException) {
@@ -207,13 +209,13 @@ class Query implements QueryInterface
 
             if (stripos($dbalException->getMessage(), 'no database selected') !== false) {
                 $message = 'No database name was specified in the configuration.';
-                $exception = new Exception\DatabaseConnectionException($message, $dbalException->getCode());
+                $exception = new DatabaseConnectionException($message, $dbalException->getCode());
             } elseif (stripos($dbalException->getMessage(), 'table') !== false && stripos($dbalException->getMessage(), 'not') !== false && stripos($dbalException->getMessage(), 'exist') !== false) {
                 $message = 'A table or view seems to be missing from the database.';
-                $exception = new Exception\DatabaseStructureException($message, $dbalException->getCode());
+                $exception = new DatabaseStructureException($message, $dbalException->getCode());
             } else {
                 $message = 'An error occurred in the Database Abstraction Layer.';
-                $exception = new Exception\DatabaseException($message, $dbalException->getCode());
+                $exception = new DatabaseException($message, $dbalException->getCode());
             }
 
             throw $exception;
@@ -224,14 +226,14 @@ class Query implements QueryInterface
             if (stripos($pdoException->getMessage(), 'unknown database') !== false
                 || (stripos($pdoException->getMessage(), 'database') !== false && strpos($pdoException->getMessage(), 'not') !== false && strpos($pdoException->getMessage(), 'exist') !== false)) {
                 $message = 'The database which was specified in the configuration does not exist.';
-                $exception = new Exception\DatabaseConnectionException($message, $pdoException->getCode());
+                $exception = new DatabaseConnectionException($message, $pdoException->getCode());
             } elseif (stripos($pdoException->getMessage(), 'access denied') !== false
                 || stripos($pdoException->getMessage(), 'connection refused') !== false) {
                 $message = 'The database username / password specified in the configuration seem to be wrong.';
-                $exception = new Exception\DatabaseConnectionException($message, $pdoException->getCode());
+                $exception = new DatabaseConnectionException($message, $pdoException->getCode());
             } else {
                 $message = 'An error occurred while using the PDO Driver: ' . $pdoException->getMessage();
-                $exception = new Exception\DatabaseException($message, $pdoException->getCode());
+                $exception = new DatabaseException($message, $pdoException->getCode());
             }
 
             throw $exception;
@@ -242,7 +244,7 @@ class Query implements QueryInterface
      * Returns the query result count
      *
      * @return integer The query result count
-     * @throws Exception\DatabaseConnectionException
+     * @throws DatabaseConnectionException
      * @api
      */
     public function count(): int
@@ -254,11 +256,11 @@ class Query implements QueryInterface
             $dqlQuery->setHint(\Doctrine\ORM\Query::HINT_CUSTOM_TREE_WALKERS, [CountWalker::class]);
             $offset = $dqlQuery->getFirstResult();
             $limit = $dqlQuery->getMaxResults();
-            if ($offset !== null) {
+            if ($offset !== 0) {
                 $dqlQuery->setFirstResult(null);
             }
             $numberOfResults = (int)$dqlQuery->getSingleScalarResult();
-            if ($offset !== null) {
+            if ($offset !== 0) {
                 $numberOfResults = max(0, $numberOfResults - $offset);
             }
             if ($limit !== null) {
@@ -270,7 +272,7 @@ class Query implements QueryInterface
             $this->logger->error($message, LogEnvironment::fromMethodName(__METHOD__));
             return 0;
         } catch (\PDOException $pdoException) {
-            throw new Exception\DatabaseConnectionException($pdoException->getMessage(), (int)$pdoException->getCode());
+            throw new DatabaseConnectionException($pdoException->getMessage(), (int)$pdoException->getCode());
         }
     }
 
@@ -405,7 +407,7 @@ class Query implements QueryInterface
     /**
      * Gets the constraint for this query.
      *
-     * @return Constraint the constraint, or null if none
+     * @return object the constraint, or null if none
      * @api
     */
     public function getConstraint()
@@ -422,12 +424,12 @@ class Query implements QueryInterface
      * @return object
      * @api
      */
-    public function logicalAnd($constraint1)
+    public function logicalAnd(mixed $constraint1, mixed ...$constraints)
     {
         if (is_array($constraint1)) {
             $constraints = $constraint1;
         } else {
-            $constraints = func_get_args();
+            $constraints = [$constraint1, ...$constraints];
         }
         return $this->queryBuilder->expr()->andX(...$constraints);
     }
@@ -441,12 +443,12 @@ class Query implements QueryInterface
      * @return object
      * @api
      */
-    public function logicalOr($constraint1)
+    public function logicalOr(mixed $constraint1, mixed ...$constraints)
     {
         if (is_array($constraint1)) {
             $constraints = $constraint1;
         } else {
-            $constraints = func_get_args();
+            $constraints = [$constraint1, ...$constraints];
         }
         return $this->queryBuilder->expr()->orX(...$constraints);
     }
@@ -686,7 +688,7 @@ class Query implements QueryInterface
     /**
      * Return the SQL statements representing this Query.
      *
-     * @return array
+     * @return string|string[]
      */
     public function getSql()
     {

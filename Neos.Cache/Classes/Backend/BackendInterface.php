@@ -51,13 +51,13 @@ interface BackendInterface
      * @param string $entryIdentifier An identifier for this specific cache entry
      * @param string $data The data to be stored
      * @param array $tags Tags to associate with this cache entry. If the backend does not support tags, this option can be ignored.
-     * @param integer $lifetime Lifetime of this cache entry in seconds. If NULL is specified, the default lifetime is used. "0" means unlimited lifetime.
+     * @param integer|null $lifetime Lifetime of this cache entry in seconds. If NULL is specified, the default lifetime is used. "0" means unlimited lifetime.
      * @return void
      * @throws \Neos\Cache\Exception if no cache frontend has been set.
      * @throws \InvalidArgumentException if the identifier is not valid
      * @api
      */
-    public function set(string $entryIdentifier, string $data, array $tags = [], int $lifetime = null): void;
+    public function set(string $entryIdentifier, string $data, array $tags = [], ?int $lifetime = null): void;
 
     /**
      * Loads data from the cache.

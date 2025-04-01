@@ -13,7 +13,7 @@ namespace Neos\Flow\Command;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ConnectionException;
-use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\Exception as DBALException;
 use Doctrine\DBAL\DriverManager;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Cli\CommandController;
@@ -86,7 +86,7 @@ class DatabaseCommandController extends CommandController
      * @throws DBALException
      * @throws StopActionException
      */
-    public function setCharsetCommand(string $characterSet = 'utf8mb4', string $collation = 'utf8mb4_unicode_ci', string $output = null, bool $verbose = false)
+    public function setCharsetCommand(string $characterSet = 'utf8mb4', string $collation = 'utf8mb4_unicode_ci', ?string $output = null, bool $verbose = false)
     {
         if (!in_array($this->persistenceSettings['backendOptions']['driver'], ['pdo_mysql', 'mysqli'])) {
             $this->outputLine('Database charset/collation fixing is only supported on MySQL.');
@@ -118,13 +118,13 @@ class DatabaseCommandController extends CommandController
      * @throws ConnectionException
      * @throws DBALException
      */
-    protected function convertToCharacterSetAndCollation(string $characterSet, string $collation, string $outputPathAndFilename = null, bool $verbose = false)
+    protected function convertToCharacterSetAndCollation(string $characterSet, string $collation, ?string $outputPathAndFilename = null, bool $verbose = false)
     {
         $statements = ['SET foreign_key_checks = 0'];
 
         $statements[] = 'ALTER DATABASE ' . $this->connection->quoteIdentifier($this->persistenceSettings['backendOptions']['dbname']) . ' CHARACTER SET ' . $characterSet . ' COLLATE ' . $collation;
 
-        $tableNames = $this->connection->getSchemaManager()->listTableNames();
+        $tableNames = $this->connection->createSchemaManager()->listTableNames() ?? [];
         foreach ($tableNames as $tableName) {
             $statements[] = 'ALTER TABLE ' . $this->connection->quoteIdentifier($tableName) . ' DEFAULT CHARACTER SET ' . $characterSet . ' COLLATE ' . $collation;
             $statements[] = 'ALTER TABLE ' . $this->connection->quoteIdentifier($tableName) . ' CONVERT TO CHARACTER SET ' . $characterSet . ' COLLATE ' . $collation;
@@ -134,18 +134,14 @@ class DatabaseCommandController extends CommandController
 
         if ($outputPathAndFilename === null) {
             try {
-                $this->connection->beginTransaction();
                 foreach ($statements as $statement) {
                     if ($verbose) {
                         $this->outputLine($statement);
                     }
                     $this->connection->exec($statement);
                 }
-                $this->connection->commit();
             } catch (\Exception $exception) {
-                $this->connection->rollBack();
-                $this->outputLine($exception->getMessage());
-                $this->outputLine('[ERROR] The transaction was rolled back.');
+                $this->outputLine('<error>[ERROR] %s</error>', [$exception->getMessage()]);
             }
         } else {
             file_put_contents($outputPathAndFilename, implode(';' . PHP_EOL, $statements) . ';');

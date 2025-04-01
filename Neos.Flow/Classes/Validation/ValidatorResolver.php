@@ -14,6 +14,7 @@ namespace Neos\Flow\Validation;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\ObjectManagement\Configuration\Configuration;
 use Neos\Flow\ObjectManagement\ObjectManagerInterface;
+use Neos\Flow\Reflection\PropertyReflection;
 use Neos\Flow\Reflection\ReflectionService;
 use Neos\Flow\Validation\Validator\PolyTypeObjectValidatorInterface;
 use Neos\Utility\Exception\InvalidTypeException;
@@ -87,7 +88,7 @@ class ValidatorResolver
      *
      * @param string $validatorType Either one of the built-in data types or fully qualified validator class name
      * @param array $validatorOptions Options to be passed to the validator
-     * @return ValidatorInterface
+     * @return ValidatorInterface|null
      * @throws Exception\NoSuchValidatorException
      * @throws Exception\InvalidValidationConfigurationException
      * @api
@@ -153,13 +154,13 @@ class ValidatorResolver
      * @param string $methodName
      * @param array $methodParameters Optional pre-compiled array of method parameters
      * @param array $methodValidateAnnotations Optional pre-compiled array of validate annotations (as array)
-     * @return array An Array of ValidatorConjunctions for each method parameters.
+     * @return array<ConjunctionValidator> An Array of ValidatorConjunctions for each method parameters.
      * @throws Exception\InvalidValidationConfigurationException
      * @throws Exception\NoSuchValidatorException
      * @throws Exception\InvalidTypeHintException
      * @throws Exception\InvalidValidationOptionsException
      */
-    public function buildMethodArgumentsValidatorConjunctions($className, $methodName, array $methodParameters = null, array $methodValidateAnnotations = null)
+    public function buildMethodArgumentsValidatorConjunctions($className, $methodName, ?array $methodParameters = null, ?array $methodValidateAnnotations = null)
     {
         $validatorConjunctions = [];
 
@@ -296,9 +297,19 @@ class ValidatorResolver
             $conjunctionValidator->addValidator($objectValidator);
             foreach ($this->reflectionService->getClassPropertyNames($targetClassName) as $classPropertyName) {
                 $classPropertyTagsValues = $this->reflectionService->getPropertyTagsValues($targetClassName, $classPropertyName);
-
                 if (!isset($classPropertyTagsValues['var'])) {
-                    throw new \InvalidArgumentException(sprintf('There is no @var annotation for property "%s" in class "%s".', $classPropertyName, $targetClassName), 1363778104);
+                    try {
+                        $propertyReflection = new PropertyReflection($targetClassName, $classPropertyName);
+                    } catch (\ReflectionException $e) {
+                        throw new \RuntimeException(sprintf('Failed reflecting property %s from class %s while building base a validator conjunction: %s', $classPropertyName, $targetClassName, $e->getMessage()), 1651570561);
+                    }
+
+                    if (!$propertyReflection->hasType()) {
+                        throw new \InvalidArgumentException(sprintf('Failed building base validator conjunction for property %s in class %s because there is no @var annotation and no type declaration.', $classPropertyName, $targetClassName), 1363778104);
+                    }
+                    /** @var \ReflectionNamedType $type */
+                    $type = $propertyReflection->getType();
+                    $classPropertyTagsValues['var'][] = $type->getName();
                 }
                 try {
                     $parsedType = TypeHandling::parseType(trim(implode('', $classPropertyTagsValues['var']), ' \\'));
@@ -307,6 +318,12 @@ class ValidatorResolver
                 }
 
                 if ($this->reflectionService->isPropertyAnnotatedWith($targetClassName, $classPropertyName, Flow\IgnoreValidation::class)) {
+                    continue;
+                }
+                if ($classSchema !== null
+                    && $classSchema->hasProperty($classPropertyName)
+                    && $classSchema->isPropertyTransient($classPropertyName)
+                    && $validationGroups === ['Persistence', 'Default']) {
                     continue;
                 }
 
@@ -422,7 +439,7 @@ class ValidatorResolver
      * validator is available false is returned
      *
      * @param string $validatorType Either the fully qualified class name of the validator or the short name of a built-in validator
-     * @return string|boolean Class name of the validator or false if not available
+     * @return string|false Class name of the validator or false if not available
      */
     protected function resolveValidatorObjectName($validatorType)
     {

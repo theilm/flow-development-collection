@@ -1,86 +1,55 @@
 <?php
+declare(strict_types=1);
+
 namespace Neos\Flow\Persistence\Doctrine\DataTypes;
 
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Types\JsonArrayType as DoctrineJsonArrayType;
+use Doctrine\DBAL\Types\ConversionException;
+use Doctrine\DBAL\Types\JsonType as DoctrineJsonType;
 use Doctrine\ORM\Mapping\Entity as ORMEntity;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Core\Bootstrap;
 use Neos\Flow\ObjectManagement\DependencyInjection\DependencyProxy;
 use Neos\Flow\Persistence\PersistenceManagerInterface;
+use Neos\Flow\Property\Exception\TypeConverterException;
+use Neos\Flow\Property\TypeConverter\DenormalizingObjectConverter;
 use Neos\Flow\Reflection\ReflectionService;
 use Neos\Utility\TypeHandling;
 
 /**
  * Extends the default doctrine JsonArrayType to work with entities.
  *
- * TODO: If doctrine supports a Postgres 9.4 platform we could default to jsonb.
- *
  * @Flow\Proxy(false)
  */
-class JsonArrayType extends DoctrineJsonArrayType
+class JsonArrayType extends DoctrineJsonType
 {
-    /**
-     * @var string
-     */
-    const FLOW_JSON_ARRAY = 'flow_json_array';
+    public const FLOW_JSON_ARRAY = 'flow_json_array';
+    protected ?PersistenceManagerInterface $persistenceManager = null;
+    protected ReflectionService $reflectionService;
 
-    /**
-     * @var PersistenceManagerInterface
-     */
-    protected $persistenceManager;
-
-    /**
-     * @var ReflectionService
-     */
-    protected $reflectionService;
-
-    /**
-     * Gets the name of this type.
-     *
-     * @return string
-     */
-    public function getName()
+    public function getName(): string
     {
         return self::FLOW_JSON_ARRAY;
     }
 
     /**
-     * Gets the (preferred) binding type for values of this type that
-     * can be used when binding parameters to prepared statements.
+     * Use jsonb for PostgreSQL.
      *
-     * @return integer
+     * The `json` format, is not comparable in PostgreSQL, something that
+     * leads to issues if you want to use `DISTINCT` in a query.
+     * Starting with PostgreSQL 9.4 the `jsonb` type is available, and the
+     * DB knows how to compare it, making distinct queries possible.
      */
-    public function getBindingType()
+    public function getSQLDeclaration(array $column, AbstractPlatform $platform): string
     {
-        return \PDO::PARAM_STR;
+        return $platform->getJsonTypeDeclarationSQL($column);
     }
 
     /**
-     * Use jsonb for PostgreSQL, this means we require PostgreSQL 9.4
-     *
-     * @param array $fieldDeclaration The field declaration
-     * @param AbstractPlatform $platform The currently used database platform
-     * @return string
+     * We map jsonb fields to our datatype by default.
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
-    {
-        switch ($platform->getName()) {
-            case 'postgresql':
-                return 'jsonb';
-            default:
-                return $platform->getJsonTypeDeclarationSQL($fieldDeclaration);
-        }
-    }
-
-    /**
-     * We map jsonb fields to our datatype by default. Doctrine doesn't use jsonb at all.
-     *
-     * @param AbstractPlatform $platform
-     * @return array
-     */
-    public function getMappedDatabaseTypes(AbstractPlatform $platform)
+    public function getMappedDatabaseTypes(AbstractPlatform $platform): array
     {
         return ['jsonb'];
     }
@@ -91,59 +60,59 @@ class JsonArrayType extends DoctrineJsonArrayType
      *
      * @param mixed $value The value to convert.
      * @param AbstractPlatform $platform The currently used database platform.
-     * @return array The PHP representation of the value.
+     * @return array|null The PHP representation of the value.
+     * @throws ConversionException
+     * @throws TypeConverterException
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value, AbstractPlatform $platform): ?array
     {
+        $value = parent::convertToPHPValue($value, $platform);
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (!is_array($value)) {
+            throw new \InvalidArgumentException(sprintf('The JsonArrayType only converts arrays, %s given', get_debug_type($value)), 1663056939);
+        }
+
         $this->initializeDependencies();
+        $this->decodeObjectReferences($value);
 
-        switch ($platform->getName()) {
-            case 'postgresql':
-                $value = (is_resource($value)) ? stream_get_contents($value) : $value;
-                $array = parent::convertToPHPValue($value, $platform);
-                break;
-            default:
-                $array = parent::convertToPHPValue($value, $platform);
-        }
-        if (is_array($array)) {
-            $this->decodeObjectReferences($array);
-        }
-
-        return $array;
+        return $value;
     }
 
     /**
      * Converts a value from its PHP representation to its database representation
      * of this type.
      *
-     * @param mixed $array The value to convert.
+     * @param mixed $value The value to convert.
      * @param AbstractPlatform $platform The currently used database platform.
-     * @return mixed The database representation of the value.
+     * @return string|null The database representation of the value.
+     * @throws \JsonException
      */
-    public function convertToDatabaseValue($array, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value, AbstractPlatform $platform): ?string
     {
-        if ($array === null) {
+        if ($value === null) {
             return null;
         }
 
-        if (!is_array($array)) {
-            throw new \InvalidArgumentException(sprintf('The JsonArrayType only converts arrays, %s given', gettype($array)), 1569944963);
+        if (!is_array($value)) {
+            throw new \InvalidArgumentException(sprintf('The JsonArrayType only converts arrays, %s given', gettype($value)), 1569944963);
         }
 
         $this->initializeDependencies();
-        $this->encodeObjectReferences($array);
+        $this->encodeObjectReferences($value);
 
-        return json_encode($array, JSON_PRETTY_PRINT | JSON_FORCE_OBJECT | JSON_UNESCAPED_UNICODE);
+        return json_encode($value, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_FORCE_OBJECT | JSON_UNESCAPED_UNICODE);
     }
 
     /**
      * Fetches dependencies from the static object manager.
      *
      * Injection cannot be used, since __construct on Types\Type is final.
-     *
-     * @return void
      */
-    protected function initializeDependencies()
+    protected function initializeDependencies(): void
     {
         if ($this->persistenceManager === null) {
             $this->persistenceManager = Bootstrap::$staticObjectManager->get(PersistenceManagerInterface::class);
@@ -155,17 +124,20 @@ class JsonArrayType extends DoctrineJsonArrayType
      * Traverses the $array and replaces known persisted objects (tuples of
      * type and identifier) with actual instances.
      *
-     * @param array $array
-     * @return void
+     * @throws TypeConverterException
      */
-    protected function decodeObjectReferences(array &$array)
+    protected function decodeObjectReferences(array &$array): void
     {
+        assert($this->persistenceManager instanceof PersistenceManagerInterface);
+
         foreach ($array as &$value) {
             if (!is_array($value)) {
                 continue;
             }
 
-            if (isset($value['__flow_object_type'])) {
+            if (isset($value['__value_object_value'], $value['__value_object_type'])) {
+                $value = self::deserializeValueObject($value);
+            } elseif (isset($value['__flow_object_type'])) {
                 $value = $this->persistenceManager->getObjectByIdentifier($value['__identifier'], $value['__flow_object_type'], true);
             } else {
                 $this->decodeObjectReferences($value);
@@ -174,20 +146,40 @@ class JsonArrayType extends DoctrineJsonArrayType
     }
 
     /**
+     * @throws \InvalidArgumentException
+     * @throws TypeConverterException
+     */
+    public static function deserializeValueObject(array $serializedValueObject): \JsonSerializable
+    {
+        if (isset($serializedValueObject['__value_object_value'], $serializedValueObject['__value_object_type'])) {
+            return DenormalizingObjectConverter::convertFromSource(
+                $serializedValueObject['__value_object_value'],
+                $serializedValueObject['__value_object_type']
+            );
+        }
+
+        throw new \InvalidArgumentException(
+            '$serializedValueObject must contain keys "__value_object_value" and "__value_object_type"',
+            1621332088
+        );
+    }
+
+    /**
      * Traverses the $array and replaces known persisted objects with a tuple of
      * type and identifier.
      *
-     * @param array $array
-     * @return void
      * @throws \RuntimeException
+     * @throws \JsonException
      */
-    protected function encodeObjectReferences(array &$array)
+    protected function encodeObjectReferences(array &$array): void
     {
+        assert($this->persistenceManager instanceof PersistenceManagerInterface);
+
         foreach ($array as &$value) {
             if (is_array($value)) {
                 $this->encodeObjectReferences($value);
             }
-            if (!is_object($value) || (is_object($value) && $value instanceof DependencyProxy)) {
+            if (!is_object($value) || ($value instanceof DependencyProxy)) {
                 continue;
             }
 
@@ -216,16 +208,41 @@ class JsonArrayType extends DoctrineJsonArrayType
                     '__flow_object_type' => $propertyClassName,
                     '__identifier' => $this->persistenceManager->getIdentifierByObject($value)
                 ];
+            } elseif ($value instanceof \JsonSerializable
+                && DenormalizingObjectConverter::isDenormalizable(get_class($value))
+            ) {
+                $value = self::serializeValueObject($value);
             }
         }
     }
 
     /**
-     * We require a comment on the column to make doctrine recognize the type on already existing columns
-     *
-     * @return boolean
+     * @throws \RuntimeException
+     * @throws \JsonException
      */
-    public function requiresSQLCommentHint(AbstractPlatform $platform)
+    public static function serializeValueObject(\JsonSerializable $valueObject): array
+    {
+        if ($json = json_encode($valueObject, JSON_THROW_ON_ERROR)) {
+            return [
+                '__value_object_type' => get_class($valueObject),
+                '__value_object_value' =>
+                    json_decode($json, true, 512, JSON_THROW_ON_ERROR)
+            ];
+        }
+
+        throw new \RuntimeException(
+            sprintf(
+                'Could not serialize $valueObject due to: %s',
+                json_last_error_msg()
+            ),
+            1621333154
+        );
+    }
+
+    /**
+     * We require a comment on the column to make doctrine recognize the type on already existing columns
+     */
+    public function requiresSQLCommentHint(AbstractPlatform $platform): bool
     {
         return true;
     }

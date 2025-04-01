@@ -25,10 +25,11 @@ use Neos\Flow\Persistence\PersistenceManagerInterface;
 use Neos\Flow\Security\Context;
 use Neos\Flow\Session\SessionInterface;
 use Neos\Flow\Session\SessionManager;
-use Neos\Flow\Tests\FunctionalTestRequestHandler;
 use Neos\Flow\Validation\ValidatorResolver;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 
@@ -84,6 +85,12 @@ class InternalRequestEngine implements RequestEngineInterface
 
     /**
      * @Flow\Inject
+     * @var ServerRequestFactoryInterface
+     */
+    protected $serverRequestFactory;
+
+    /**
+     * @Flow\Inject
      * @var ResponseFactoryInterface
      */
     protected $responseFactory;
@@ -97,25 +104,46 @@ class InternalRequestEngine implements RequestEngineInterface
     /**
      * Sends the given HTTP request
      *
-     * @param ServerRequestInterface $httpRequest
+     * @param RequestInterface $httpRequest
      * @return ResponseInterface
      * @throws FlowException
      * @throws Http\Exception
-     * @api
      */
-    public function sendRequest(ServerRequestInterface $httpRequest): ResponseInterface
+    public function sendRequest(RequestInterface $httpRequest): ResponseInterface
     {
+        // convert RequestInterface to ServerRequestInterface if needed
+        if (!$httpRequest instanceof ServerRequestInterface) {
+            $serverRequest = $this->serverRequestFactory->createServerRequest(
+                $httpRequest->getMethod(),
+                $httpRequest->getUri()
+            );
+            foreach ($httpRequest->getHeaders() as $header => $value) {
+                $serverRequest = $serverRequest->withHeader($header, $value);
+            }
+            $serverRequest = $serverRequest->withBody($httpRequest->getBody());
+            $httpRequest = $serverRequest;
+        }
+
         $requestHandler = $this->bootstrap->getActiveRequestHandler();
-        if (!$requestHandler instanceof FunctionalTestRequestHandler) {
+        if (!$this->bootstrap->getContext()->isTesting()) {
             throw new Http\Exception('The browser\'s internal request engine has only been designed for use within functional tests.', 1335523749);
         }
 
+        /** @phpstan-ignore-next-line composer doesnt autoload this class */
         $requestHandler->setHttpRequest($httpRequest);
         $this->securityContext->clearContext();
         $this->validatorResolver->reset();
 
         $objectManager = $this->bootstrap->getObjectManager();
+
+        /**
+         * @var Http\Middleware\MiddlewaresChain $middlewaresChain
+         */
         $middlewaresChain = $objectManager->get(Http\Middleware\MiddlewaresChain::class);
+        $middlewaresChain->onStep(function (ServerRequestInterface $request) use ($requestHandler) {
+            /** @phpstan-ignore-next-line composer doesnt autoload this class */
+            $requestHandler->setHttpRequest($request);
+        });
 
         try {
             $response = $middlewaresChain->handle($httpRequest);
@@ -170,6 +198,6 @@ class InternalRequestEngine implements RequestEngineInterface
             ->withStatus($statusCode)
             ->withBody($this->contentFactory->createStream($content))
             ->withHeader('X-Flow-ExceptionCode', $exception->getCode())
-            ->withHeader('X-Flow-ExceptionMessage', $exception->getMessage());
+            ->withHeader('X-Flow-ExceptionMessage', base64_encode($exception->getMessage()));
     }
 }

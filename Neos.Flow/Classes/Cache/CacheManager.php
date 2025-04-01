@@ -11,8 +11,9 @@ namespace Neos\Flow\Cache;
  * source code.
  */
 
+use Neos\Cache\CacheFactoryInterface;
 use Neos\Flow\Annotations as Flow;
-use Neos\Flow\Cache\Backend\FileBackend;
+use Neos\Cache\Backend\FileBackend;
 use Neos\Cache\Exception\DuplicateIdentifierException;
 use Neos\Cache\Exception\NoSuchCacheException;
 use Neos\Cache\Frontend\FrontendInterface;
@@ -22,7 +23,11 @@ use Neos\Flow\Log\Utility\LogEnvironment;
 use Neos\Flow\Utility\Environment;
 use Neos\Utility\Files;
 use Neos\Flow\Utility\PhpAnalyzer;
+use Neos\Cache\Psr\Cache\CachePool;
+use Neos\Cache\Psr\SimpleCache\SimpleCache;
 use Psr\Log\LoggerInterface;
+use Psr\SimpleCache\CacheInterface;
+use Psr\Cache\CacheItemPoolInterface;
 
 /**
  * The Cache Manager
@@ -33,7 +38,7 @@ use Psr\Log\LoggerInterface;
 class CacheManager
 {
     /**
-     * @var CacheFactory
+     * @var CacheFactoryInterface
      */
     protected $cacheFactory;
 
@@ -53,9 +58,19 @@ class CacheManager
     protected $environment;
 
     /**
-     * @var array
+     * @var FrontendInterface[]
      */
     protected $caches = [];
+
+    /**
+     * @var CacheInterface[]
+     */
+    protected $simpleCaches = [];
+
+    /**
+     * @var CacheItemPoolInterface[]
+     */
+    protected $cacheItemPools = [];
 
     /**
      * @var array
@@ -86,10 +101,10 @@ class CacheManager
     }
 
     /**
-     * @param CacheFactory $cacheFactory
+     * @param CacheFactoryInterface $cacheFactory
      * @return void
      */
-    public function injectCacheFactory(CacheFactory $cacheFactory): void
+    public function injectCacheFactory(CacheFactoryInterface $cacheFactory): void
     {
         $this->cacheFactory = $cacheFactory;
     }
@@ -178,6 +193,43 @@ class CacheManager
         }
 
         return $this->caches[$identifier];
+    }
+
+    /**
+     * Return a SimpleCache frontend for the cache specified by $identifier
+     *
+     * @param string $identifier
+     * @return CacheInterface
+     */
+    public function getSimpleCache(string $identifier): CacheInterface
+    {
+        if (isset($this->simpleCaches[$identifier])) {
+            return $this->simpleCaches[$identifier];
+        }
+
+        $cache = $this->getCache($identifier);
+        $simpleCache = new SimpleCache($identifier, $cache->getBackend());
+        $this->simpleCaches[$identifier] = $simpleCache;
+        return $simpleCache;
+    }
+
+    /**
+     * Return a SimpleCache frontend for the cache specified by $identifier
+     *
+     * @param string $identifier
+     * @return CacheItemPoolInterface
+     * @throws NoSuchCacheException
+     */
+    public function getCacheItemPool(string $identifier): CacheItemPoolInterface
+    {
+        if (isset($this->cacheItemPools[$identifier])) {
+            return $this->cacheItemPools[$identifier];
+        }
+
+        $cache = $this->getCache($identifier);
+        $cacheItemPool = new CachePool($identifier, $cache->getBackend());
+        $this->cacheItemPools[$identifier] = $cacheItemPool;
+        return $cacheItemPool;
     }
 
     /**
@@ -323,9 +375,10 @@ class CacheManager
         $flushDoctrineProxyCache = false;
         $flushPolicyCache = false;
         if (count($modifiedClassNamesWithUnderscores) > 0) {
-            $reflectionStatusCache = $this->getCache('Flow_Reflection_Status');
+            $reflectionDataRuntimeCache = $this->getCache('Flow_Reflection_RuntimeData');
             foreach (array_keys($modifiedClassNamesWithUnderscores) as $classNameWithUnderscores) {
-                $reflectionStatusCache->remove($classNameWithUnderscores);
+                $this->logger->debug('File change detected, removing reflection for ' . $classNameWithUnderscores);
+                $reflectionDataRuntimeCache->remove($classNameWithUnderscores);
                 if ($flushDoctrineProxyCache === false && preg_match('/_Domain_Model_(.+)/', $classNameWithUnderscores) === 1) {
                     $flushDoctrineProxyCache = true;
                 }
@@ -446,6 +499,7 @@ class CacheManager
         $backend = isset($this->cacheConfigurations[$identifier]['backend']) ? $this->cacheConfigurations[$identifier]['backend'] : $this->cacheConfigurations['Default']['backend'];
         $backendOptions = isset($this->cacheConfigurations[$identifier]['backendOptions']) ? $this->cacheConfigurations[$identifier]['backendOptions'] : $this->cacheConfigurations['Default']['backendOptions'];
         $persistent = isset($this->cacheConfigurations[$identifier]['persistent']) ? $this->cacheConfigurations[$identifier]['persistent'] : $this->cacheConfigurations['Default']['persistent'];
+        // @phpstan-ignore-next-line - $persistent is not yet part of the CacheFactoryInterface
         $cache = $this->cacheFactory->create($identifier, $frontend, $backend, $backendOptions, $persistent);
         $this->registerCache($cache, $persistent);
     }

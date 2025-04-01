@@ -13,6 +13,7 @@ namespace Neos\Flow\Tests\Functional\Mvc\Fixtures\Controller;
 
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Mvc\Controller\ActionController;
+use Neos\Flow\Property\TypeConverter\ObjectConverter;
 
 /**
  * An action controller test fixture
@@ -21,6 +22,8 @@ use Neos\Flow\Mvc\Controller\ActionController;
  */
 class ActionControllerTestBController extends ActionController
 {
+    protected $enableDynamicTypeValidation = true;
+
     public function initializeAction()
     {
         /* @var $propertyMappingConfiguration \Neos\Flow\Property\PropertyMappingConfiguration */
@@ -54,7 +57,7 @@ class ActionControllerTestBController extends ActionController
      * @param TestObjectArgument $argument
      * @return string
      */
-    public function optionalObjectAction(TestObjectArgument $argument = null)
+    public function optionalObjectAction(?TestObjectArgument $argument = null)
     {
         if ($argument === null) {
             return 'null';
@@ -66,7 +69,7 @@ class ActionControllerTestBController extends ActionController
      * @param TestObjectArgument|null $argument
      * @return string
      */
-    public function optionalAnnotatedObjectAction(TestObjectArgument $argument = null)
+    public function optionalAnnotatedObjectAction(?TestObjectArgument $argument = null)
     {
         if ($argument === null) {
             return 'null';
@@ -112,6 +115,36 @@ class ActionControllerTestBController extends ActionController
     public function validatedGroupCollectionAction(TestObjectArgument $argument)
     {
         return $argument->getCollection()->get(0)->getEmailAddress();
+    }
+
+    protected function initializeDynamicTypeAction()
+    {
+        $propertyMappingConfiguration = $this->arguments['argument']->getPropertyMappingConfiguration();
+        $propertyMappingConfiguration->setTypeConverterOption(ObjectConverter::class, ObjectConverter::CONFIGURATION_OVERRIDE_TARGET_TYPE_ALLOWED, true);
+    }
+
+    /**
+     * @param TestObjectInterface $argument
+     * @return string
+     */
+    public function dynamicTypeAction(TestObjectInterface $argument)
+    {
+        return $argument->getEmailAddress();
+    }
+
+    protected function initializeDynamicConfiguredTypeAction()
+    {
+        $propertyMappingConfiguration = $this->arguments['argument']->getPropertyMappingConfiguration();
+        $propertyMappingConfiguration->setTypeConverterOption(ObjectConverter::class, ObjectConverter::CONFIGURATION_TARGET_TYPE, TestObjectArgument::class);
+    }
+
+    /**
+     * @param TestObjectInterface $argument
+     * @return string
+     */
+    public function dynamicConfiguredTypeAction(TestObjectInterface $argument)
+    {
+        return $argument->getEmailAddress();
     }
 
     /**
@@ -232,7 +265,7 @@ class ActionControllerTestBController extends ActionController
      * @param \DateTime $argument
      * @return string
      */
-    public function optionalDateAction(\DateTime $argument = null)
+    public function optionalDateAction(?\DateTime $argument = null)
     {
         if ($argument === null) {
             return 'null';

@@ -12,6 +12,7 @@ namespace Neos\FluidAdaptor\View;
  * source code.
  */
 
+use Neos\Flow\Package\FlowPackageInterface;
 use Neos\FluidAdaptor\View\Exception\InvalidTemplateResourceException;
 use Neos\Flow\Package\PackageManager;
 use Neos\Utility\ObjectAccess;
@@ -298,6 +299,7 @@ class TemplatePaths extends \TYPO3Fluid\Fluid\View\TemplatePaths
 
         if (strpos($partialName, ':') !== false) {
             list($packageKey, $actualPartialName) = explode(':', $partialName);
+            /** @var FlowPackageInterface $package */
             $package = $this->packageManager->getPackage($packageKey);
             $patternReplacementVariables['package'] = $packageKey;
             $patternReplacementVariables['packageResourcesPath'] = $package->getResourcesPath();
@@ -354,20 +356,6 @@ class TemplatePaths extends \TYPO3Fluid\Fluid\View\TemplatePaths
         }
 
         return $path;
-    }
-
-    /**
-     * @param string $packageKey
-     * @return string|null
-     */
-    protected function getPackagePrivateResourcesPath($packageKey)
-    {
-        if (!$this->packageManager->isPackageAvailable($packageKey)) {
-            return null;
-        }
-        $packageResourcesPath = $this->packageManager->getPackage($packageKey)->getResourcesPath();
-
-        return Files::concatenatePaths([$packageResourcesPath, 'Private']);
     }
 
     /**
@@ -539,13 +527,14 @@ class TemplatePaths extends \TYPO3Fluid\Fluid\View\TemplatePaths
      * <PackageKey>_<SubPackageKey>_<ControllerName>_<prefix>_<SHA1>
      * The SH1 hash is a checksum that is based on the file path and last modification date
      *
-     * @param string $pathAndFilename
+     * @param string|null $pathAndFilename
      * @param string $prefix
      * @return string
      * @throws InvalidTemplateResourceException
      */
     protected function createIdentifierForFile($pathAndFilename, $prefix)
     {
+        $pathAndFilename = (string)$pathAndFilename;
         $templateModifiedTimestamp = 0;
         $isStandardInput = $pathAndFilename === 'php://stdin';
         $isFile = is_file($pathAndFilename);

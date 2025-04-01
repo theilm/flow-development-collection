@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 namespace Neos\Utility\Unicode;
 
 /*
@@ -118,7 +121,7 @@ class TextIterator implements \Iterator
      *
      * @return void
      */
-    public function next()
+    public function next(): void
     {
         $this->previousElement = $this->getCurrentElement();
         $this->iteratorCacheIterator->next();
@@ -130,7 +133,7 @@ class TextIterator implements \Iterator
      *
      * @return mixed Key (number) of the current element
      */
-    public function key()
+    public function key(): mixed
     {
         return $this->iteratorCacheIterator->key();
     }
@@ -153,7 +156,7 @@ class TextIterator implements \Iterator
      *
      * @return void
      */
-    public function rewind()
+    public function rewind(): void
     {
         $this->iteratorCacheIterator->rewind();
     }
@@ -195,13 +198,13 @@ class TextIterator implements \Iterator
     }
 
     /**
-     * Returns the next elment following the character of the original string
+     * Returns the offset of the next element following the character of the original string
      * given by its offset
      *
      * @param integer $offset The offset of the character
-     * @return string The element following this character
+     * @return int The offset of the element following this character
      */
-    public function following(int $offset): string
+    public function following(int $offset): int
     {
         $this->rewind();
         while ($this->valid()) {
@@ -215,14 +218,15 @@ class TextIterator implements \Iterator
     }
 
     /**
-     * Returns the element preceding the character of the original string given by its offset
+     * Returns the offset of the element preceding the character of the original string given by its offset
      *
      * @param integer $offset The offset of the character
-     * @return string The element preceding this character
+     * @return int The offset of the element preceding this character
      */
-    public function preceding(int $offset): string
+    public function preceding(int $offset): int
     {
         $this->rewind();
+        $currentElement = null;
         while ($this->valid()) {
             $previousElement = $this->getCurrentElement();
             $this->next();
@@ -231,7 +235,10 @@ class TextIterator implements \Iterator
                 return $previousElement->getOffset() + $previousElement->getLength();
             }
         }
-        return $currentElement->getOffset() + $currentElement->getLength();
+        if ($currentElement) {
+            return $currentElement->getOffset() + $currentElement->getLength();
+        }
+        return -1;
     }
 
     /**

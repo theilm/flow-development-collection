@@ -6,61 +6,77 @@
     "license": ["MIT"],
 
     "require": {
-        "php": "^7.3 || ^8.0",
+        "php": "^8.2",
 
         "ext-zlib": "*",
         "ext-SPL": "*",
         "ext-json": "*",
         "ext-reflection": "*",
         "ext-xml": "*",
+        "ext-xmlreader": "*",
 
-        "neos/cache": "*",
-        "neos/eel": "*",
-        "neos/error-messages": "*",
-        "neos/utility-arrays": "*",
-        "neos/utility-files": "*",
-        "neos/utility-mediatypes": "*",
-        "neos/utility-objecthandling": "*",
-        "neos/utility-opcodecache": "*",
-        "neos/utility-schema": "*",
-        "neos/utility-unicode": "*",
-        "neos/flow-log": "*",
-        "neos/http-factories": "*",
+        "neos/cache": "self.version",
+        "neos/eel": "self.version",
+        "neos/error-messages": "self.version",
+        "neos/utility-arrays": "self.version",
+        "neos/utility-files": "self.version",
+        "neos/utility-mediatypes": "self.version",
+        "neos/utility-objecthandling": "self.version",
+        "neos/utility-opcodecache": "self.version",
+        "neos/utility-schema": "self.version",
+        "neos/utility-unicode": "self.version",
+        "neos/flow-log": "self.version",
+        "neos/http-factories": "self.version",
+        "neos/utility-pdo": "self.version",
+
+        "neos/composer-plugin": "^2.0",
 
         "psr/http-message": "^1.0",
         "psr/http-factory": "^1.0",
         "psr/container": "^1.0",
-        "psr/log": "^1.0",
+        "psr/log": "^2.0 || ^3.0",
         "psr/http-server-middleware": "^1.0",
         "psr/http-server-handler": "^1.0",
+        "psr/http-client": "^1.0",
+        "psr/simple-cache": "^2.0 || ^3.0",
+        "psr/cache": "^2.0 || ^3.0",
 
         "ramsey/uuid": "^3.0 || ^4.0",
+        "laminas/laminas-code": "^4.10",
 
-        "doctrine/orm": "^2.7",
-        "doctrine/migrations": "^3.0",
-        "doctrine/dbal": "^2.12",
-        "doctrine/common": "^2.13.1 || ^3.0",
+        "doctrine/orm": "^2.14.0",
+        "doctrine/migrations": "^3.3",
+        "doctrine/dbal": "^3.1.4",
+        "doctrine/common": "^3.1",
+        "doctrine/annotations": "^1.13",
 
-        "symfony/yaml": "^5.1",
-        "symfony/dom-crawler": "^5.1",
-        "symfony/console": "^5.1",
+        "symfony/yaml": "^5.1||^6.0",
+        "symfony/dom-crawler": "^5.1||^6.0",
+        "symfony/console": "^5.1||^6.0",
 
-        "neos/composer-plugin": "^2.0",
-        "neos/utility-pdo": "*",
+        "composer/composer": "^2.7.7",
 
-        "composer/composer": "^1.9 || ^2.0",
-
-        "egulias/email-validator": "^2.1"
+        "egulias/email-validator": "^3.0||^4.0"
     },
     "require-dev": {
-        "vimeo/psalm": "~4.1.1"
+        "mikey179/vfsstream": "^1.6.10",
+        "phpunit/phpunit": "~9.1"
+    },
+    "replace": {
+        "symfony/polyfill-php70": "*",
+        "symfony/polyfill-php71": "*",
+        "symfony/polyfill-php72": "*",
+        "symfony/polyfill-php73": "*",
+        "symfony/polyfill-php74": "*",
+        "symfony/polyfill-php80": "*"
     },
     "suggest": {
         "ext-curl": "To use the \\Neos\\Flow\\Http\\Client\\CurlEngine",
         "doctrine/data-fixtures": "To manage and execute the loading of data fixtures for the Doctrine ORM or ODM",
         "neos/party": "To make use of basic user handling",
         "php-uuid": "For fast generation of UUIDs used in the persistence.",
-        "neos/fluid-adaptor": "For rendering templates with TYPO3.Fluid"
+        "neos/fluid-adaptor": "For rendering templates with TYPO3.Fluid",
+        "ext-igbinary": "The igbinary extension is a replacement for the standard PHP serializer"
     },
     "autoload": {
         "psr-4": {

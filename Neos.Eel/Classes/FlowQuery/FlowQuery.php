@@ -69,6 +69,8 @@ use Neos\Flow\Annotations as Flow;
  * ----------------
  *
  * If an operation is final, it should return the resulting value directly.
+ *
+ * @phpstan-consistent-constructor
  */
 class FlowQuery implements ProtectedContextAwareInterface, \IteratorAggregate, \Countable
 {
@@ -143,13 +145,13 @@ class FlowQuery implements ProtectedContextAwareInterface, \IteratorAggregate, \
     }
 
     /**
-     * Add a new operation to the operation list and return the new FlowQuery
-     * object. If the operation is final, we directly compute the result and
-     * return the value.
+     * Add a new operation to the operation list and return the new FlowQuery object.
+     *
+     * If the operation is final, we directly compute the result and return the value.
      *
      * @param string $operationName
      * @param array $arguments
-     * @return FlowQuery
+     * @return FlowQuery|mixed
      */
     public function __call($operationName, array $arguments)
     {
@@ -182,7 +184,7 @@ class FlowQuery implements ProtectedContextAwareInterface, \IteratorAggregate, \
      *
      * @return integer
      */
-    public function count()
+    public function count(): int
     {
         return $this->__call('count', []);
     }
@@ -194,7 +196,7 @@ class FlowQuery implements ProtectedContextAwareInterface, \IteratorAggregate, \
      *
      * @return \ArrayIterator
      */
-    public function getIterator()
+    public function getIterator(): \ArrayIterator
     {
         if (count($this->operations) > 0) {
             $this->evaluateOperations();
@@ -209,6 +211,7 @@ class FlowQuery implements ProtectedContextAwareInterface, \IteratorAggregate, \
      */
     protected function evaluateOperations()
     {
+        $lastOperationResult = null;
         while ($op = array_shift($this->operations)) {
             $operation = $this->operationResolver->resolveOperation($op['name'], $this->context);
             $lastOperationResult = $operation->evaluate($this, $op['arguments']);
@@ -254,7 +257,7 @@ class FlowQuery implements ProtectedContextAwareInterface, \IteratorAggregate, \
      *
      * Should only be called inside an operation.
      *
-     * @return string the next operation name or NULL if no next operation found.
+     * @return string|null the next operation name or NULL if no next operation found.
      */
     public function peekOperationName()
     {

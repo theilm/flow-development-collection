@@ -77,14 +77,10 @@ class Dispatcher
      * @param Response $response
      * @param CommandControllerInterface $controller
      * @return void
+     * @Flow\Signal
      */
     protected function emitBeforeControllerInvocation(Request $request, Response $response, CommandControllerInterface $controller)
     {
-        $this->signalDispatcher->dispatch(\Neos\Flow\Mvc\Dispatcher::class, 'beforeControllerInvocation', [
-            'request' => $request,
-            'response' => $response,
-            'controller' => $controller
-        ]);
     }
 
     /**
@@ -95,14 +91,10 @@ class Dispatcher
      * @param Response $response
      * @param CommandControllerInterface $controller
      * @return void
+     * @Flow\Signal
      */
     protected function emitAfterControllerInvocation(Request $request, Response $response, CommandControllerInterface $controller)
     {
-        $this->signalDispatcher->dispatch(\Neos\Flow\Mvc\Dispatcher::class, 'afterControllerInvocation', [
-            'request' => $request,
-            'response' => $response,
-            'controller' => $controller
-        ]);
     }
 
     /**

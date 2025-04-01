@@ -45,7 +45,7 @@ class TransientMemoryBackend extends IndependentAbstractBackend implements Tagga
      * @throws Exception if no cache frontend has been set.
      * @api
      */
-    public function set(string $entryIdentifier, string $data, array $tags = [], int $lifetime = null): void
+    public function set(string $entryIdentifier, string $data, array $tags = [], ?int $lifetime = null): void
     {
         if (!$this->cache instanceof FrontendInterface) {
             throw new Exception('No cache frontend has been set yet via setCache().', 1238244992);
@@ -150,6 +150,20 @@ class TransientMemoryBackend extends IndependentAbstractBackend implements Tagga
             $this->remove($identifier);
         }
         return count($identifiers);
+    }
+
+    /**
+     * Removes all cache entries of this cache which are tagged by any of the specified tags.
+     *
+     * @api
+     */
+    public function flushByTags(array $tags): int
+    {
+        $flushed = 0;
+        foreach ($tags as $tag) {
+            $flushed += $this->flushByTag($tag);
+        }
+        return $flushed;
     }
 
     /**

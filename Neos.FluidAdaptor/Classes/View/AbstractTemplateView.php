@@ -16,12 +16,17 @@ use Neos\Flow\Mvc\ActionRequest;
 use Neos\Flow\Mvc\Controller\ControllerContext;
 use Neos\Flow\Mvc\View\ViewInterface;
 use Neos\FluidAdaptor\Core\Rendering\RenderingContext;
+use Neos\Http\Factories\StreamFactoryTrait;
+use Psr\Http\Message\StreamInterface;
 
 /**
  * The abstract base of all Fluid views.
+ * @phpstan-consistent-constructor
  */
 abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTemplateView implements ViewInterface
 {
+    use StreamFactoryTrait;
+
     /**
      * This contains the supported options, their default values, descriptions and types.
      * Syntax example:
@@ -106,12 +111,32 @@ abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTempl
     protected $controllerContext;
 
     /**
+     * @phpstan-ignore-next-line we are incompatible with the fluid view and should use composition instead
+     */
+    public function render($actionName = null): StreamInterface
+    {
+        return $this->createStream(parent::render($actionName));
+    }
+
+    public function assign($key, $value): self
+    {
+        // layer to fix incompatibility error with typo3 fluid interface
+        return parent::assign($key, $value);
+    }
+
+    public function assignMultiple(array $values): self
+    {
+        // layer to fix incompatibility error with typo3 fluid interface
+        return parent::assignMultiple($values);
+    }
+
+    /**
      * Factory method to create an instance with given options.
      *
      * @param array $options
-     * @return AbstractTemplateView
+     * @return static
      */
-    public static function createWithOptions(array $options)
+    public static function createWithOptions(array $options): self
     {
         return new static($options);
     }
@@ -122,7 +147,7 @@ abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTempl
      * @param array $options
      * @throws Exception
      */
-    public function __construct(array $options = null)
+    public function __construct(?array $options = null)
     {
         if ($options === null) {
             $options = [];
@@ -131,7 +156,7 @@ abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTempl
         $this->validateOptions($options);
         $this->setOptions($options);
 
-        $context = new RenderingContext($this, $this->options);
+        $context = new RenderingContext($this->options);
         $context->setControllerName('Default');
         $context->setControllerAction('Default');
         parent::__construct($context);
@@ -177,15 +202,6 @@ abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTempl
     }
 
     /**
-     * @param ControllerContext $controllerContext
-     * @return boolean
-     */
-    public function canRender(ControllerContext $controllerContext)
-    {
-        return true;
-    }
-
-    /**
      * Renders a given section.
      *
      * @param string $sectionName Name of section to render
@@ -215,7 +231,7 @@ abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTempl
     {
         // check for options given but not supported
         if (($unsupportedOptions = array_diff_key($options, $this->supportedOptions)) !== []) {
-            throw new Exception(sprintf('The view options "%s" you\'re trying to set don\'t exist in class "%s".', implode(',', array_keys($unsupportedOptions)), get_class($this)), 1359625876);
+            throw new Exception(sprintf('The view options "%s" you\'re trying to set don\'t exist in class "%s".', implode(',', array_keys($unsupportedOptions)), get_class($this)), 1359625880);
         }
 
         // check for required options being set
@@ -223,7 +239,7 @@ abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTempl
             $this->supportedOptions,
             function ($supportedOptionData, $supportedOptionName, $options) {
                 if (isset($supportedOptionData[3]) && !array_key_exists($supportedOptionName, $options)) {
-                    throw new Exception('Required view option not set: ' . $supportedOptionName, 1359625876);
+                    throw new Exception('Required view option not set: ' . $supportedOptionName, 1359625881);
                 }
             },
             $options
@@ -260,7 +276,7 @@ abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTempl
     public function getOption($optionName)
     {
         if (!array_key_exists($optionName, $this->supportedOptions)) {
-            throw new \Neos\Flow\Mvc\Exception(sprintf('The view option "%s" you\'re trying to get doesn\'t exist in class "%s".', $optionName, get_class($this)), 1359625876);
+            throw new \Neos\Flow\Mvc\Exception(sprintf('The view option "%s" you\'re trying to get doesn\'t exist in class "%s".', $optionName, get_class($this)), 1359625882);
         }
 
         return $this->options[$optionName];
@@ -277,7 +293,7 @@ abstract class AbstractTemplateView extends \TYPO3Fluid\Fluid\View\AbstractTempl
     public function setOption($optionName, $value)
     {
         if (!array_key_exists($optionName, $this->supportedOptions)) {
-            throw new \Neos\Flow\Mvc\Exception(sprintf('The view option "%s" you\'re trying to set doesn\'t exist in class "%s".', $optionName, get_class($this)), 1359625876);
+            throw new \Neos\Flow\Mvc\Exception(sprintf('The view option "%s" you\'re trying to set doesn\'t exist in class "%s".', $optionName, get_class($this)), 1359625883);
         }
 
         $this->options[$optionName] = $value;

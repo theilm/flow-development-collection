@@ -14,7 +14,6 @@ namespace Neos\Flow\Mvc\Routing\Dto;
 use Neos\Flow\Annotations as Flow;
 use GuzzleHttp\Psr7\Uri;
 use Neos\Flow\Http\Helper\UriHelper;
-use Neos\Utility\Arrays;
 use Psr\Http\Message\UriInterface;
 
 /**
@@ -83,8 +82,8 @@ final class UriConstraints
             $constraints[self::CONSTRAINT_SCHEME] = $uri->getScheme();
             $constraints[self::CONSTRAINT_HOST] = $uri->getHost();
         }
-        if ($uri->getPort() !== null) {
-            $constraints[self::CONSTRAINT_PORT] = $uri->getPort();
+        if ($uri->getPort() !== null || $uri->getScheme() !== '') {
+            $constraints[self::CONSTRAINT_PORT] = $uri->getPort() ?? UriHelper::getDefaultPortForScheme($uri->getScheme());
         }
         if ($uri->getPath() !== '') {
             $constraints[self::CONSTRAINT_PATH] = $uri->getPath();
@@ -214,16 +213,18 @@ final class UriConstraints
      * Create a new instance with a query string corresponding to the given $values merged with any existing query string constraint
      *
      * @param array $values
-     * @return $this
+     * @return UriConstraints
      */
     public function withAddedQueryValues(array $values): self
     {
         $newConstraints = $this->constraints;
+        $temporaryUriWithQuery = new Uri();
         if (isset($this->constraints[self::CONSTRAINT_QUERY_STRING])) {
-            parse_str($this->constraints[self::CONSTRAINT_QUERY_STRING], $existingValues);
-            $values = Arrays::arrayMergeRecursiveOverrule($existingValues, $values);
+            $temporaryUriWithQuery = $temporaryUriWithQuery->withQuery($this->constraints[self::CONSTRAINT_QUERY_STRING]);
         }
-        $newConstraints[self::CONSTRAINT_QUERY_STRING] = http_build_query($values, '', '&');
+        // temporary, otherwise empty, uri to satisfy and reuse helper
+        $temporaryUriWithQuery = UriHelper::uriWithAdditionalQueryParameters($temporaryUriWithQuery, $values);
+        $newConstraints[self::CONSTRAINT_QUERY_STRING] = $temporaryUriWithQuery->getQuery();
         return new static($newConstraints);
     }
 
@@ -311,6 +312,7 @@ final class UriConstraints
     public function applyTo(UriInterface $baseUri, bool $forceAbsoluteUri): UriInterface
     {
         $uri = new Uri('');
+        $uriPath = '';
         if (isset($this->constraints[self::CONSTRAINT_SCHEME]) && $this->constraints[self::CONSTRAINT_SCHEME] !== $baseUri->getScheme()) {
             $forceAbsoluteUri = true;
             $uri = $uri->withScheme($this->constraints[self::CONSTRAINT_SCHEME]);
@@ -358,22 +360,22 @@ final class UriConstraints
                 $uri = $uri->withHost($host);
             }
         }
-        if (isset($this->constraints[self::CONSTRAINT_PORT]) && ($forceAbsoluteUri || $this->constraints[self::CONSTRAINT_PORT] !== $baseUri->getPort()) && ($baseUri->getPort() !== null || $this->constraints[self::CONSTRAINT_PORT] !== UriHelper::getDefaultPortForScheme($baseUri->getScheme()))) {
+        if (isset($this->constraints[self::CONSTRAINT_PORT]) && ($forceAbsoluteUri || $this->constraints[self::CONSTRAINT_PORT] !== $baseUri->getPort()) && ($baseUri->getPort() !== null || $this->constraints[self::CONSTRAINT_PORT] !== UriHelper::getDefaultPortForScheme($this->constraints[self::CONSTRAINT_SCHEME] ?? $baseUri->getScheme()))) {
             $forceAbsoluteUri = true;
             $uri = $uri->withPort($this->constraints[self::CONSTRAINT_PORT]);
         }
 
         if (isset($this->constraints[self::CONSTRAINT_PATH]) && $this->constraints[self::CONSTRAINT_PATH] !== $baseUri->getPath()) {
-            $uri = $uri->withPath($this->constraints[self::CONSTRAINT_PATH]);
+            $uriPath = $this->constraints[self::CONSTRAINT_PATH];
         }
         if (isset($this->constraints[self::CONSTRAINT_PATH_PREFIX])) {
             // we need to trim the leading "/" from $uri->getPath() (as it is always absolute); so
             // that the Path Prefix can build strings like <prepended><url>, or
             // <prepended>/<url>
-            $uri = $uri->withPath($this->constraints[self::CONSTRAINT_PATH_PREFIX] . ltrim($uri->getPath(), '/'));
+            $uriPath = $this->constraints[self::CONSTRAINT_PATH_PREFIX] . ltrim($uriPath, '/');
         }
         if (isset($this->constraints[self::CONSTRAINT_PATH_SUFFIX])) {
-            $uri = $uri->withPath($uri->getPath() . $this->constraints[self::CONSTRAINT_PATH_SUFFIX]);
+            $uriPath .= $this->constraints[self::CONSTRAINT_PATH_SUFFIX];
         }
         if (isset($this->constraints[self::CONSTRAINT_QUERY_STRING])) {
             $uri = $uri->withQuery($this->constraints[self::CONSTRAINT_QUERY_STRING]);
@@ -383,18 +385,16 @@ final class UriConstraints
         $baseUriPath = trim($baseUri->getPath(), '/');
         if ($baseUriPath !== '') {
             $mergedUriPath = $baseUriPath;
-            if ($uri->getPath() !== '') {
-                $mergedUriPath .= '/' . ltrim($uri->getPath(), '/');
+            if ($uriPath !== '') {
+                $mergedUriPath .= '/' . ltrim($uriPath, '/');
             }
-            $uri = $uri->withPath($mergedUriPath);
+            $uriPath = $mergedUriPath;
         }
 
         // Ensure the URL always starts with "/", no matter if it is empty of non-empty.
         // HINT: We need to enforce at least a "/" URL,a s otherwise e.g. linking to the root node of a Neos
         // site would not work.
-        if ($uri->getPath() === '' || $uri->getPath()[0] !== '/') {
-            $uri = $uri->withPath('/' . $uri->getPath());
-        }
+        $uri = $uri->withPath('/' . ltrim($uriPath, '/'));
 
         if ($forceAbsoluteUri) {
             if (empty($uri->getScheme())) {
@@ -404,7 +404,7 @@ final class UriConstraints
                 $uri = $uri->withHost($baseUri->getHost());
             }
             if (!isset($this->constraints[self::CONSTRAINT_PORT]) && $uri->getPort() === null) {
-                $port = $baseUri->getPort() ?? UriHelper::getDefaultPortForScheme($baseUri->getScheme());
+                $port = $baseUri->getPort() ?? UriHelper::getDefaultPortForScheme($uri->getScheme());
                 $uri = $uri->withPort($port);
             }
         }

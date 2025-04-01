@@ -56,11 +56,11 @@ class PointcutMethodNameFilter implements PointcutFilterInterface
      * Constructor - initializes the filter with the name filter pattern
      *
      * @param string $methodNameFilterExpression A regular expression which filters method names
-     * @param string $methodVisibility The method visibility modifier (public, protected or private). Specify NULL if you don't care.
+     * @param string|null $methodVisibility The method visibility modifier (public, protected or private). Specify NULL if you don't care.
      * @param array $methodArgumentConstraints array of method constraints
      * @throws InvalidPointcutExpressionException
      */
-    public function __construct(string $methodNameFilterExpression, string $methodVisibility = null, array $methodArgumentConstraints = [])
+    public function __construct(string $methodNameFilterExpression, ?string $methodVisibility = null, array $methodArgumentConstraints = [])
     {
         $this->methodNameFilterExpression = $methodNameFilterExpression;
         if ($methodVisibility !== null && preg_match(self::PATTERN_MATCHVISIBILITYMODIFIER, $methodVisibility) !== 1) {

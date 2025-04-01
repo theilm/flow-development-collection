@@ -11,8 +11,8 @@ namespace Neos\Flow\Persistence;
  * source code.
  */
 
+use Neos\Flow\Annotations as Flow;
 use Neos\Utility\ObjectAccess;
-use Neos\Flow\Persistence\Exception as PersistenceException;
 
 /**
  * The Flow Persistence Manager base class
@@ -37,17 +37,10 @@ abstract class AbstractPersistenceManager implements PersistenceManagerInterface
     protected $hasUnpersistedChanges = false;
 
     /**
-     * @var \SplObjectStorage
+     * @Flow\Inject
+     * @var AllowedObjectsContainer
      */
     protected $allowedObjects;
-
-    /**
-     * Constructor
-     */
-    public function __construct()
-    {
-        $this->allowedObjects = new \SplObjectStorage();
-    }
 
     /**
      * Injects the Flow settings, the persistence part is kept
@@ -97,82 +90,10 @@ abstract class AbstractPersistenceManager implements PersistenceManagerInterface
      * @param object $object The object
      * @return void
      * @api
-     * @deprecated Use allowObject() instead. See https://github.com/neos/flow-development-collection/pull/2024
-     */
-    public function whitelistObject($object): void
-    {
-        $this->allowObject($object);
-    }
-
-    /**
-     * Adds the given object to a list of allowed objects which may be persisted even if the current HTTP request
-     * is considered a "safe" request.
-     *
-     * @param object $object The object
-     * @return void
-     * @api
      */
     public function allowObject($object)
     {
         $this->allowedObjects->attach($object);
-    }
-
-    /**
-     * Checks if the given object is allowed and if not, throws an exception
-     *
-     * @param object $object
-     * @return void
-     * @throws \Neos\Flow\Persistence\Exception
-     */
-    protected function throwExceptionIfObjectIsNotAllowed($object)
-    {
-        if (!$this->allowedObjects->contains($object)) {
-            $message = 'Detected modified or new objects (' . get_class($object) . ', uuid:' . $this->getIdentifierByObject($object) . ') to be persisted which is not allowed for "safe requests"' . chr(10) .
-                    'According to the HTTP 1.1 specification, so called "safe request" (usually GET or HEAD requests)' . chr(10) .
-                    'should not change your data on the server side and should be considered read-only. If you need to add,' . chr(10) .
-                    'modify or remove data, you should use the respective request methods (POST, PUT, DELETE and PATCH).' . chr(10) . chr(10) .
-                    'If you need to store some data during a safe request (for example, logging some data for your analytics),' . chr(10) .
-                    'you are still free to call PersistenceManager->persistAll() manually.';
-            throw new PersistenceException($message, 1377788621);
-        }
-    }
-
-    /**
-     * Converts the given object into an array containing the identity of the domain object.
-     *
-     * @param object $object The object to be converted
-     * @return array The identity array in the format array('__identity' => '...')
-     * @throws Exception\UnknownObjectException if the given object is not known to the Persistence Manager
-     */
-    public function convertObjectToIdentityArray($object): array
-    {
-        $identifier = $this->getIdentifierByObject($object);
-        if ($identifier === null) {
-            throw new Exception\UnknownObjectException(sprintf('Tried to convert an object of type "%s" to an identity array, but it is unknown to the Persistence Manager.', get_class($object)), 1302628242);
-        }
-        return ['__identity' => $identifier];
-    }
-
-    /**
-     * Recursively iterates through the given array and turns objects
-     * into an arrays containing the identity of the domain object.
-     *
-     * @param array $array The array to be iterated over
-     * @return array The modified array without objects
-     * @throws Exception\UnknownObjectException if array contains objects that are not known to the Persistence Manager
-     */
-    public function convertObjectsToIdentityArrays(array $array): array
-    {
-        foreach ($array as $key => $value) {
-            if (is_array($value)) {
-                $array[$key] = $this->convertObjectsToIdentityArrays($value);
-            } elseif (is_object($value) && $value instanceof \Traversable) {
-                $array[$key] = $this->convertObjectsToIdentityArrays(iterator_to_array($value));
-            } elseif (is_object($value)) {
-                $array[$key] = $this->convertObjectToIdentityArray($value);
-            }
-        }
-        return $array;
     }
 
     /**

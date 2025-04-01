@@ -15,13 +15,11 @@ use Neos\Flow\ObjectManagement\Proxy\Compiler;
 use Neos\Flow\ObjectManagement\Proxy\ProxyClass;
 use Neos\Flow\Reflection\ReflectionService;
 use Neos\Flow\Tests\UnitTestCase;
+use PHPUnit\Framework\MockObject\MockObject;
 
 class ProxyClassTest extends UnitTestCase
 {
-    /**
-     * @return array
-     */
-    public function proxyClassesDataProvider()
+    public function proxyClassesDataProvider(): array
     {
         return [
             [
@@ -29,13 +27,9 @@ class ProxyClassTest extends UnitTestCase
                 'originalClassAnnotations' => [],
                 'originalClassDocumentation' => '',
                 'originalClassConstants' => [['name' => 'TEST_CONSTANT', 'value' => '1']],
-                'expectedProxyCode' => "namespace \\Acme\\Namespace;\n" .
-                    "\n" .
-                    "use Doctrine\\ORM\\Mapping as ORM;\n" .
-                    "use Neos\\Flow\\Annotations as Flow;\n" .
-                    "\n" .
+                'expectedProxyCode' =>
                     'class ClassName extends ClassName' . Compiler::ORIGINAL_CLASSNAME_SUFFIX . " implements \\Neos\\Flow\\ObjectManagement\\Proxy\\ProxyInterface {\n\n" .
-                    "    const TEST_CONSTANT = 1;\n\n" .
+                    "    const TEST_CONSTANT = 1;" . PHP_EOL . PHP_EOL.
                     '}',
             ],
             [
@@ -44,11 +38,8 @@ class ProxyClassTest extends UnitTestCase
                 'originalClassDocumentation' => '',
                 'originalClassConstants' => [['name' => 'TEST_CONSTANT', 'value' => '1']],
                 'expectedProxyCode' =>
-                    "use Doctrine\\ORM\\Mapping as ORM;\n" .
-                    "use Neos\\Flow\\Annotations as Flow;\n" .
-                    "\n" .
                     'class ClassWithoutNamespace extends ClassWithoutNamespace' . Compiler::ORIGINAL_CLASSNAME_SUFFIX . " implements \\Neos\\Flow\\ObjectManagement\\Proxy\\ProxyInterface {\n\n" .
-                    "    const TEST_CONSTANT = 1;\n\n" .
+                    "    const TEST_CONSTANT = 1;" . PHP_EOL . PHP_EOL.
                     '}',
             ],
             [
@@ -57,11 +48,8 @@ class ProxyClassTest extends UnitTestCase
                 'originalClassDocumentation' => '',
                 'originalClassConstants' => [['name' => 'TEST_CONSTANT', 'value' => '1']],
                 'expectedProxyCode' =>
-                    "use Doctrine\\ORM\\Mapping as ORM;\n" .
-                    "use Neos\\Flow\\Annotations as Flow;\n" .
-                    "\n" .
                     'class ClassWithoutNamespace extends ClassWithoutNamespace' . Compiler::ORIGINAL_CLASSNAME_SUFFIX . " implements \\Neos\\Flow\\ObjectManagement\\Proxy\\ProxyInterface {\n\n" .
-                    "    const TEST_CONSTANT = 1;\n\n" .
+                    "    const TEST_CONSTANT = 1;" . PHP_EOL . PHP_EOL.
                     '}',
             ],
         ];
@@ -70,15 +58,17 @@ class ProxyClassTest extends UnitTestCase
     /**
      * @test
      * @dataProvider proxyClassesDataProvider
+     * @throws
      */
-    public function renderWorksAsExpected($originalClassName, $originalClassAnnotations, $originalClassDocumentation, $originalClassConstants, $expectedProxyCode)
+    public function renderWorksAsExpected($originalClassName, $originalClassAnnotations, $originalClassDocumentation, $originalClassConstants, $expectedProxyCode): void
     {
         $mockReflectionService = $this->getMockBuilder(ReflectionService::class)->disableOriginalConstructor()->getMock();
-        $mockReflectionService->expects(self::any())->method('isClassAbstract')->will(self::returnValue(strpos($expectedProxyCode, 'abstract ') !== false));
-        $mockReflectionService->expects(self::any())->method('getClassAnnotations')->will(self::returnValue($originalClassAnnotations));
+        $mockReflectionService->method('isClassAbstract')->willReturn(str_contains($expectedProxyCode, 'abstract '));
+        $mockReflectionService->method('getClassAnnotations')->willReturn($originalClassAnnotations);
 
         $mockProxyClass = $this->getAccessibleMock(ProxyClass::class, ['buildClassDocumentation'], [$originalClassName], '', true);
-        $mockProxyClass->expects(self::any())->method('buildClassDocumentation')->will(self::returnValue($originalClassDocumentation));
+        /** @var ProxyClass|MockObject $mockProxyClass */
+        $mockProxyClass->method('buildClassDocumentation')->willReturn($originalClassDocumentation);
         $mockProxyClass->injectReflectionService($mockReflectionService);
         foreach ($originalClassConstants as $originalClassConstant) {
             $mockProxyClass->addConstant($originalClassConstant['name'], $originalClassConstant['value']);

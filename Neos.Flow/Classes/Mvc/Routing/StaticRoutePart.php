@@ -32,24 +32,24 @@ class StaticRoutePart extends \Neos\Flow\Mvc\Routing\AbstractRoutePart
      * Checks whether this Static Route Part correspond to the given $routePath.
      * This is true if $routePath is not empty and the first part is equal to the Route Part name.
      *
-     * @param string $routePath The request path to be matched - without query parameters, host and fragment.
+     * @param string|null $routePath The request path to be matched - without query parameters, host and fragment.
      * @return boolean true if Route Part matched $routePath, otherwise false.
      */
     public function match(&$routePath)
     {
+        $routePath = (string)$routePath;
         $this->value = null;
         if ($this->name === null || $this->name === '') {
             return false;
         }
-        if ($routePath === '') {
+        if ($routePath === '' || $routePath === null) {
             return false;
         }
         $valueToMatch = substr($routePath, 0, strlen($this->name));
         if ($valueToMatch !== $this->name) {
             return false;
         }
-        $shortenedRequestPath = substr($routePath, strlen($valueToMatch));
-        $routePath = ($shortenedRequestPath !== false) ? $shortenedRequestPath : '';
+        $routePath = substr($routePath, strlen($valueToMatch));
 
         return true;
     }

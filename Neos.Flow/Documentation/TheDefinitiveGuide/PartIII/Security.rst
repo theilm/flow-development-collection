@@ -210,6 +210,8 @@ Flow ships with the following authentication tokens:
    Options: ``usernamePostField`` and ``passwordPostField``
 #. ``UsernamePasswordHttpBasic``: Extracts username & password from the the ``Authorization``
    header (Basic auth). This token is sessionless (see below)
+#. ``BearerToken``: Extracts a rfc6750 bearer token (See: `RFC 6750 <https://tools.ietf.org/html/rfc6750>`_) from a given
+   ``Authorization`` header. This token is sessionless (see below) and has no configuration options.
 #. ``PasswordToken``: Extracts password from a POST parameter.
    Options: ``passwordPostField``
 
@@ -494,6 +496,11 @@ them in "parallel".
   You will have to make sure, that each provider has a unique name. In the example above
   the provider name is ``DefaultProvider``.
 
+.. note::
+
+  You can also disable an authentication provider by setting the
+  provider value to ``false`` in the YAML configuration. For instance ``DefaultProvider: false``.
+
 *Example: Configuration of two authentication providers*
 
 .. code-block:: yaml
@@ -698,6 +705,9 @@ controllers will be authenticated by the default username/password provider.
 |                      |                                               |                                          | ``cidrPattern: '192.168.178.0/24'`` or                           |
 |                      |                                               |                                          | ``cidrPattern: 'fd9e:21a7:a92c:2323::/96'``                      |
 +----------------------+-----------------------------------------------+------------------------------------------+------------------------------------------------------------------+
+
+.. note:: The pattern for ``Uri`` will have slashes escaped and is amended with ``^…$``
+  automatically, so do not include those in your pattern!
 
 Authentication entry points
 ---------------------------
@@ -1594,12 +1604,12 @@ firewall configuration will look like:
             'Some.Package:AllowedUris':
               pattern:  'Uri'
               patternOptions:
-                'uriPattern': '\/some\/url\/.*'
+                'uriPattern': '/some/url/.*'
               interceptor:  'AccessGrant'
             'Some.Package:BlockedUris':
               pattern:  'Uri'
               patternOptions:
-                'uriPattern': '\/some\/url\/blocked.*'
+                'uriPattern': '/some/url/blocked.*'
               interceptor:  'AccessDeny'
             'Some.Package:BlockedHosts':
               pattern:  'Host'
@@ -1623,7 +1633,7 @@ security interceptors.
 
 .. note::
 
-  You might have noticed the ``rejectAll`` option. If this is set to ``yes``,
+  You might have noticed the ``rejectAll`` option. If this is set to ``true``,
   only request which are explicitly allowed by a request filter will be able
   to pass the firewall.
 

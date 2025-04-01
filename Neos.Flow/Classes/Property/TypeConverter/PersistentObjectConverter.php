@@ -63,7 +63,7 @@ class PersistentObjectConverter extends ObjectConverter
     const CONFIGURATION_IDENTITY_CREATION_ALLOWED = 5;
 
     /**
-     * @var array
+     * @var array<string>
      */
     protected $sourceTypes = ['string', 'array'];
 
@@ -156,12 +156,12 @@ class PersistentObjectConverter extends ObjectConverter
      * @param string $targetType
      * @param array $convertedChildProperties
      * @param PropertyMappingConfigurationInterface $configuration
-     * @return object|TargetNotFoundError the converted entity/value object or an instance of TargetNotFoundError if the object could not be resolved
+     * @return object|TargetNotFoundError|null the converted entity/value object or an instance of TargetNotFoundError if the object could not be resolved
      * @throws \InvalidArgumentException|InvalidTargetException
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
-        /** @psalm-var class-string $targetType */
+        /** @var class-string $targetType */
         if (is_array($source)) {
             if ($this->reflectionService->isClassAnnotatedWith($targetType, ValueObject::class)) {
                 if (isset($source['__identity']) && (count($source) > 1)) {
@@ -224,14 +224,13 @@ class PersistentObjectConverter extends ObjectConverter
      * Handle the case if $source is an array.
      *
      * @param array $source
-     * @param string $targetType
-     * @psalm-param class-string $targetType
+     * @param class-string $targetType
      * @param array $convertedChildProperties
      * @param PropertyMappingConfigurationInterface|null $configuration
      * @return object|TargetNotFoundError
      * @throws InvalidPropertyMappingConfigurationException
      */
-    protected function handleArrayData(array $source, $targetType, array &$convertedChildProperties, PropertyMappingConfigurationInterface $configuration = null)
+    protected function handleArrayData(array $source, $targetType, array &$convertedChildProperties, ?PropertyMappingConfigurationInterface $configuration = null)
     {
         if (!isset($source['__identity'])) {
             if ($this->reflectionService->isClassAnnotatedWith($targetType, ValueObject::class) === true) {
@@ -281,8 +280,7 @@ class PersistentObjectConverter extends ObjectConverter
      * Fetch an object from persistence layer.
      *
      * @param mixed $identity
-     * @param string $targetType
-     * @psalm-param class-string $targetType
+     * @param class-string $targetType
      * @return object|null
      * @throws InvalidSourceException|DuplicateObjectException
      */

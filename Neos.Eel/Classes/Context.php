@@ -21,21 +21,18 @@ use Neos\Utility\ObjectAccess;
  * It works as a variable container with wrapping of return values
  * for safe access without warnings (on missing properties).
  *
+ * @phpstan-consistent-constructor
  * @Flow\Proxy(false)
  */
 class Context
 {
     /**
-     * @var mixed
-     */
-    protected $value;
-
-    /**
      * @param mixed $value
      */
-    public function __construct($value = null)
-    {
-        $this->value = $value;
+    public function __construct(
+        protected mixed $value = null,
+        private ?EelInvocationTracerInterface $tracer = null
+    ) {
     }
 
     /**
@@ -61,6 +58,7 @@ class Context
             if (is_array($this->value)) {
                 return array_key_exists($path, $this->value) ? $this->value[$path] : null;
             } elseif (is_object($this->value)) {
+                $this->tracer?->recordPropertyAccess($this->value, $path);
                 try {
                     return ObjectAccess::getProperty($this->value, $path);
                 } catch (PropertyNotAccessibleException $exception) {
@@ -114,6 +112,14 @@ class Context
                 $arguments[$i] = $arguments[$i]->unwrap();
             }
         }
+        if ($this->tracer !== null) {
+            // optional experimental tracing
+            if (is_object($this->value)) {
+                $this->tracer->recordMethodCall($this->value, $method, $arguments);
+            } else {
+                $this->tracer->recordFunctionCall($callback, $method, $arguments);
+            }
+        }
         return call_user_func_array($callback, $arguments);
     }
 
@@ -138,7 +144,7 @@ class Context
     public function wrap($value)
     {
         if (!$value instanceof Context) {
-            return new static($value);
+            return new static($value, $this->tracer);
         } else {
             return $value;
         }
@@ -159,18 +165,17 @@ class Context
      *
      * This method is public for closure access.
      *
-     * @param $value
+     * @param mixed $value
      * @return mixed
      */
     public function unwrapValue($value)
     {
         if (is_array($value)) {
-            $self = $this;
-            return array_map(function ($item) use ($self) {
+            return array_map(function ($item) {
                 if ($item instanceof Context) {
                     return $item->unwrap();
                 } else {
-                    return $self->unwrapValue($item);
+                    return $this->unwrapValue($item);
                 }
             }, $value);
         } else {
@@ -199,16 +204,5 @@ class Context
             $this->value[$key] = $value;
         }
         return $this;
-    }
-
-    /**
-     * @return string
-     */
-    public function __toString()
-    {
-        if (is_object($this->value) && !method_exists($this->value, '__toString')) {
-            return '[object ' . get_class($this->value) . ']';
-        }
-        return (string)$this->value;
     }
 }

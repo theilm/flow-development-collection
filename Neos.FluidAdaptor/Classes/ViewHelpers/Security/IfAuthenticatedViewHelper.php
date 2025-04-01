@@ -13,6 +13,7 @@ namespace Neos\FluidAdaptor\ViewHelpers\Security;
 
 use Neos\Flow\Security\Authentication\TokenInterface;
 use Neos\Flow\Security\Context;
+use Neos\FluidAdaptor\Core\Rendering\FlowAwareRenderingContextInterface;
 use Neos\FluidAdaptor\Core\ViewHelper\AbstractConditionViewHelper;
 use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 
@@ -66,10 +67,10 @@ class IfAuthenticatedViewHelper extends AbstractConditionViewHelper
 
     /**
      * @param null $arguments
-     * @param RenderingContextInterface $renderingContext
+     * @param FlowAwareRenderingContextInterface&RenderingContextInterface $renderingContext
      * @return bool
      */
-    protected static function evaluateCondition($arguments = null, RenderingContextInterface $renderingContext)
+    protected static function evaluateCondition($arguments, RenderingContextInterface $renderingContext)
     {
         $objectManager = $renderingContext->getObjectManager();
         /** @var Context $securityContext */

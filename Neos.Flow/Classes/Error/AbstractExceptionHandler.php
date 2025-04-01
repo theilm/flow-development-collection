@@ -23,7 +23,6 @@ use Neos\Flow\Mvc\Controller\Arguments;
 use Neos\Flow\Mvc\Controller\ControllerContext;
 use Neos\Flow\Mvc\Routing\UriBuilder;
 use Neos\Flow\Mvc\View\ViewInterface;
-use Neos\Utility\ObjectAccess;
 use Neos\Utility\Arrays;
 use Psr\Log\LoggerInterface;
 
@@ -48,7 +47,16 @@ abstract class AbstractExceptionHandler implements ExceptionHandlerInterface
     protected $options = [];
 
     /**
-     * @var array
+     * Merged custom error view options from defaultRenderingOptions and of the first matching renderingGroup
+     *
+     * @var array{
+     *      viewClassName: string,
+     *      viewOptions: array,
+     *      renderTechnicalDetails: bool,
+     *      logException: bool,
+     *      renderingGroup?: string,
+     *      variables?: array
+     * }
      */
     protected $renderingOptions;
 
@@ -106,18 +114,18 @@ abstract class AbstractExceptionHandler implements ExceptionHandlerInterface
 
         $this->renderingOptions = $this->resolveCustomRenderingOptions($exception);
 
+        $exceptionWasLogged = false;
         if ($this->throwableStorage instanceof ThrowableStorageInterface && isset($this->renderingOptions['logException']) && $this->renderingOptions['logException']) {
             $message = $this->throwableStorage->logThrowable($exception);
             $this->logger->critical($message);
+            $exceptionWasLogged = true;
         }
 
-        switch (PHP_SAPI) {
-            case 'cli':
-                $this->echoExceptionCli($exception);
-                break;
-            default:
-                $this->echoExceptionWeb($exception);
+        if (PHP_SAPI === 'cli') {
+            $this->echoExceptionCli($exception, $exceptionWasLogged);
         }
+
+        $this->echoExceptionWeb($exception);
     }
 
     /**
@@ -143,21 +151,25 @@ abstract class AbstractExceptionHandler implements ExceptionHandlerInterface
 
         $statusMessage = ResponseInformationHelper::getStatusMessageByCode($statusCode);
         $viewClassName = $renderingOptions['viewClassName'];
+        $viewOptions = array_filter($renderingOptions['viewOptions'], static function ($optionValue) {
+            return $optionValue !== null;
+        });
         /** @var ViewInterface $view */
-        $view = $viewClassName::createWithOptions($renderingOptions['viewOptions']);
-        $view = $this->applyLegacyViewOptions($view, $renderingOptions);
+        $view = $viewClassName::createWithOptions($viewOptions);
 
         $httpRequest = ServerRequest::fromGlobals();
         $request = ActionRequest::fromHttpRequest($httpRequest);
         $request->setControllerPackageKey('Neos.Flow');
         $uriBuilder = new UriBuilder();
         $uriBuilder->setRequest($request);
-        $view->setControllerContext(new ControllerContext(
-            $request,
-            new ActionResponse(),
-            new Arguments([]),
-            $uriBuilder
-        ));
+        if (method_exists($view, 'setControllerContext')) {
+            $view->setControllerContext(new ControllerContext(
+                $request,
+                new ActionResponse(),
+                new Arguments([]),
+                $uriBuilder
+            ));
+        }
 
         if (isset($renderingOptions['variables'])) {
             $view->assignMultiple($renderingOptions['variables']);
@@ -175,35 +187,10 @@ abstract class AbstractExceptionHandler implements ExceptionHandlerInterface
     }
 
     /**
-     * Sets legacy "option" properties to the view for backwards compatibility.
-     *
-     * @param ViewInterface $view
-     * @param array $renderingOptions
-     * @return ViewInterface
-     */
-    protected function applyLegacyViewOptions(ViewInterface $view, array $renderingOptions): ViewInterface
-    {
-        if (isset($renderingOptions['templatePathAndFilename'])) {
-            ObjectAccess::setProperty($view, 'templatePathAndFilename', $renderingOptions['templatePathAndFilename']);
-        }
-        if (isset($renderingOptions['layoutRootPath'])) {
-            ObjectAccess::setProperty($view, 'layoutRootPath', $renderingOptions['layoutRootPath']);
-        }
-        if (isset($renderingOptions['partialRootPath'])) {
-            ObjectAccess::setProperty($view, 'partialRootPath', $renderingOptions['partialRootPath']);
-        }
-        if (isset($renderingOptions['format'])) {
-            ObjectAccess::setProperty($view, 'format', $renderingOptions['format']);
-        }
-
-        return $view;
-    }
-
-    /**
      * Checks if custom rendering rules apply to the given $exception and returns those.
      *
      * @param \Throwable $exception
-     * @return array the custom rendering options, or NULL if no custom rendering is defined for this exception
+     * @return array the custom rendering options, or the default
      */
     protected function resolveCustomRenderingOptions(\Throwable $exception): array
     {
@@ -221,13 +208,14 @@ abstract class AbstractExceptionHandler implements ExceptionHandlerInterface
 
     /**
      * @param \Throwable $exception
-     * @return string name of the resolved renderingGroup or NULL if no group could be resolved
+     * @return string|null name of the resolved renderingGroup or NULL if no group could be resolved
      */
     protected function resolveRenderingGroup(\Throwable $exception)
     {
         if (!isset($this->options['renderingGroups'])) {
             return null;
         }
+
         foreach ($this->options['renderingGroups'] as $renderingGroupName => $renderingGroupSettings) {
             if (isset($renderingGroupSettings['matchingExceptionClassNames'])) {
                 foreach ($renderingGroupSettings['matchingExceptionClassNames'] as $exceptionClassName) {
@@ -236,8 +224,9 @@ abstract class AbstractExceptionHandler implements ExceptionHandlerInterface
                     }
                 }
             }
-            if (isset($renderingGroupSettings['matchingStatusCodes']) && $exception instanceof FlowException) {
-                if (in_array($exception->getStatusCode(), $renderingGroupSettings['matchingStatusCodes'])) {
+            if (isset($renderingGroupSettings['matchingStatusCodes'])) {
+                $statusCode = $exception instanceof FlowException ? $exception->getStatusCode(): 500;
+                if (in_array($statusCode, $renderingGroupSettings['matchingStatusCodes'])) {
                     return $renderingGroupName;
                 }
             }
@@ -246,12 +235,22 @@ abstract class AbstractExceptionHandler implements ExceptionHandlerInterface
     }
 
     /**
+     * If a renderingGroup was successfully resolved via @see resolveRenderingGroup
+     * We will use a custom error view.
+     */
+    protected function useCustomErrorView(): bool
+    {
+        return isset($this->renderingOptions['renderingGroup']);
+    }
+
+    /**
      * Formats and echoes the exception and its previous exceptions (if any) for the command line
      *
      * @param \Throwable $exception
+     * @param bool $exceptionWasLogged
      * @return void
      */
-    protected function echoExceptionCli(\Throwable $exception)
+    protected function echoExceptionCli(\Throwable $exception, bool $exceptionWasLogged)
     {
         $response = new Response();
 
@@ -259,7 +258,11 @@ abstract class AbstractExceptionHandler implements ExceptionHandlerInterface
         $exceptionMessage = $this->renderNestedExceptonsCli($exception, $exceptionMessage);
 
         if ($exception instanceof FlowException) {
-            $exceptionMessage .= PHP_EOL . 'Open <b>Data/Logs/Exceptions/' . $exception->getReferenceCode() . '.txt</b> for a full stack trace.' . PHP_EOL;
+            if ($exceptionWasLogged) {
+                $exceptionMessage .= PHP_EOL . 'Open <b>Data/Logs/Exceptions/' . $exception->getReferenceCode() . '.txt</b> for a full stack trace.' . PHP_EOL;
+            } else {
+                $exceptionMessage .= PHP_EOL . 'The exception stacktrace was not logged, because "logException" is turned off.' . PHP_EOL;
+            }
         }
 
         $response->setContent($exceptionMessage);

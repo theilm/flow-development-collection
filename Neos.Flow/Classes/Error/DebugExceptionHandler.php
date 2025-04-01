@@ -15,6 +15,7 @@ use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Core\Bootstrap;
 use Neos\Flow\Http\Helper\ResponseInformationHelper;
 use Neos\Flow\ObjectManagement\ObjectManagerInterface;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * A basic but solid exception handler which catches everything which
@@ -43,9 +44,15 @@ class DebugExceptionHandler extends AbstractExceptionHandler
     <body>
         %s
         <br />
-        %s
+        <details class="Flow-Debug-Exception-Backtrace-Code">
+            <summary>Toggle backtrace code</summary>
+            %s
+        </details>
         <br />
         %s
+        <script>
+        %s
+        </script>
     </body>
 </html>
 EOD;
@@ -64,13 +71,21 @@ EOD;
             header(sprintf('HTTP/1.1 %s %s', $statusCode, $statusMessage));
         }
 
-        if (!isset($this->renderingOptions['templatePathAndFilename'])) {
+        if ($this->useCustomErrorView() === false) {
             $this->renderStatically($statusCode, $exception);
             return;
         }
 
         try {
-            echo $this->buildView($exception, $this->renderingOptions)->render();
+            $stream = $this->buildView($exception, $this->renderingOptions)->render();
+            if ($stream instanceof ResponseInterface) {
+                /**
+                 * The http status code will already be sent, and we are only currently interested in the content stream
+                 * Thus, we unwrap the repose here:
+                 */
+                $stream = $stream->getBody();
+            }
+            ResponseInformationHelper::sendStream($stream);
         } catch (\Throwable $throwable) {
             $this->renderStatically($statusCode, $throwable);
         }
@@ -90,11 +105,17 @@ EOD;
         while (true) {
             $filepaths = Debugger::findProxyAndShortFilePath($exception->getFile());
             $filePathAndName = $filepaths['proxy'] !== '' ? $filepaths['proxy'] : $filepaths['short'];
-            $exceptionMessageParts = $this->splitExceptionMessage($exception->getMessage());
 
-            $exceptionHeader .= '<h1 class="ExceptionSubject">' . htmlspecialchars($exceptionMessageParts['subject']) . '</h1>';
-            if ($exceptionMessageParts['body'] !== '') {
-                $exceptionHeader .= '<p class="ExceptionBody">' . nl2br(htmlspecialchars($exceptionMessageParts['body'])) . '</p>';
+            ['subject' => $exceptionMessageSubject, 'body' => $exceptionMessageBody] = $this->splitExceptionMessage($exception->getMessage());
+
+            $exceptionHeader .= '<h1 class="ExceptionSubject">' . htmlspecialchars($exceptionMessageSubject) . '</h1>';
+            if ($exceptionMessageBody !== '') {
+                if (str_contains($exceptionMessageBody, '  ')) {
+                    // contents with multiple spaces will be pre-served
+                    $exceptionHeader .= '<p class="ExceptionBodyPre">' . htmlspecialchars($exceptionMessageBody) . '</p>';
+                } else {
+                    $exceptionHeader .= '<p class="ExceptionBody">' . nl2br(htmlspecialchars($exceptionMessageBody)) . '</p>';
+                }
             }
 
             $exceptionHeader .= '<table class="Flow-Debug-Exception-Meta"><tbody>';
@@ -142,7 +163,8 @@ EOD;
             file_get_contents(__DIR__ . '/../../Resources/Public/Error/Exception.css'),
             $exceptionHeader,
             $backtraceCode,
-            $footer
+            $footer,
+            file_get_contents(__DIR__ . '/../../Resources/Public/Error/Exception.js')
         );
     }
 }

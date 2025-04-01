@@ -120,7 +120,7 @@ class ArrayConverter extends AbstractTypeConverter
      * @throws TypeConverterException
      * @api
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
         if (is_array($source)) {
             return $source;
@@ -173,7 +173,6 @@ class ArrayConverter extends AbstractTypeConverter
                     ];
                 default:
                     throw new InvalidPropertyMappingConfigurationException(sprintf('Conversion from PersistentResource to array failed due to invalid resource export type setting "%s"', $exportType), 1404903210);
-
             }
         }
 
@@ -185,7 +184,7 @@ class ArrayConverter extends AbstractTypeConverter
      * @return string
      * @throws InvalidPropertyMappingConfigurationException
      */
-    protected function getStringDelimiter(PropertyMappingConfigurationInterface $configuration = null)
+    protected function getStringDelimiter(?PropertyMappingConfigurationInterface $configuration = null)
     {
         if ($configuration === null) {
             return self::DEFAULT_STRING_DELIMITER;
@@ -206,7 +205,7 @@ class ArrayConverter extends AbstractTypeConverter
      * @return string
      * @throws InvalidPropertyMappingConfigurationException
      */
-    protected function getStringFormat(PropertyMappingConfigurationInterface $configuration = null)
+    protected function getStringFormat(?PropertyMappingConfigurationInterface $configuration = null)
     {
         if ($configuration === null) {
             return self::DEFAULT_STRING_FORMAT;
@@ -227,7 +226,7 @@ class ArrayConverter extends AbstractTypeConverter
      * @return string
      * @throws InvalidPropertyMappingConfigurationException
      */
-    protected function getResourceExportType(PropertyMappingConfigurationInterface $configuration = null)
+    protected function getResourceExportType(?PropertyMappingConfigurationInterface $configuration = null)
     {
         if ($configuration === null) {
             return self::DEFAULT_RESOURCE_EXPORT_TYPE;

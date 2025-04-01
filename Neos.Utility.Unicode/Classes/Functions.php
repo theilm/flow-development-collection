@@ -19,7 +19,6 @@ namespace Neos\Utility\Unicode;
  */
 abstract class Functions
 {
-
     /**
      * Converts the first character of each word to uppercase and all remaining characters
      * to lowercase.
@@ -42,12 +41,12 @@ abstract class Functions
      * Unicode variant of substr()
      *
      * @param string $string The string to crop
-     * @param integer $start Position of the left boundary
-     * @param integer $length (optional) Length of the returned string
+     * @param int $start Position of the left boundary
+     * @param int|null $length (optional) Length of the returned string
      * @return string The processed string
      * @api
      */
-    public static function substr(string $string, int $start, int $length = null)
+    public static function substr(string $string, int $start, ?int $length = null)
     {
         if ($length === 0) {
             return '';
@@ -159,7 +158,7 @@ abstract class Functions
      * @return string|array
      * @api
      */
-    public static function pathinfo(string $path, int $options = null)
+    public static function pathinfo(string $path, ?int $options = null)
     {
         $currentLocale = setlocale(LC_CTYPE, 0);
         // Before we have a setting for setlocale, his should suffice for pathinfo

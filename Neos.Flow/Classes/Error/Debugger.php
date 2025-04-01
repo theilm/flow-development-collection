@@ -286,10 +286,17 @@ class Debugger
                     if (preg_match(self::$excludedPropertyNames, $property->getName())) {
                         continue;
                     }
+                    if ($property->isStatic()) {
+                        continue;
+                    }
                     $dump .= chr(10);
                     $dump .= str_repeat(' ', $level) . ($plaintext ? '' : '<span class="debug-property">') . self::ansiEscapeWrap($property->getName(), '36', $ansiColors) . ($plaintext ? '' : '</span>') . ' => ';
                     $property->setAccessible(true);
-                    $value = $property->getValue($object);
+                    if ($property->isInitialized($object) === false) {
+                        $value = null;
+                    } else {
+                        $value = $property->getValue($object);
+                    }
                     if (is_array($value)) {
                         $dump .= self::renderDump($value, $level + 1, $plaintext, $ansiColors);
                     } elseif (is_object($value)) {
@@ -303,6 +310,8 @@ class Debugger
             if (!$plaintext) {
                 $dump = '<a href="#o' . $objectIdentifier . '" onclick="document.location.hash=\'#o' . $objectIdentifier . '\'; return false;" class="debug-seeabove" title="see above">' . $dump . '</a>';
             }
+        } else {
+            $dump .= self::getObjectSnippetPlaintext($object);
         }
 
         return $dump;
@@ -326,36 +335,7 @@ class Debugger
             $backtraceCode .= '<li class="Flow-Debug-Backtrace-Step">';
             $class = isset($step['class']) ? $step['class'] . '<span class="color-muted">::</span>' : '';
 
-            $arguments = '';
-            if (isset($step['args']) && is_array($step['args'])) {
-                foreach ($step['args'] as $argument) {
-                    $arguments .= (strlen($arguments) === 0) ? '' : '<span class="color-muted">,</span> ';
-                    $arguments .= '<span class="color-text-inverted">';
-                    if (is_object($argument)) {
-                        $arguments .= '<em>' . get_class($argument) . '</em>';
-                    } elseif (is_string($argument)) {
-                        $preparedArgument = (strlen($argument) < 100) ? $argument : substr($argument, 0, 50) . '…' . substr($argument, -50);
-                        $preparedArgument = htmlspecialchars($preparedArgument);
-                        $preparedArgument = str_replace('…', '<span class="color-muted">…</span>', $preparedArgument);
-                        $preparedArgument = str_replace("\n", '<span class="color-muted">⏎</span>', $preparedArgument);
-                        $arguments .= '"<span title="' . htmlspecialchars($argument) . '">' . $preparedArgument . '</span>"';
-                    } elseif (is_numeric($argument)) {
-                        $arguments .= (string)$argument;
-                    } elseif (is_bool($argument)) {
-                        $arguments .= ($argument === true ? 'true' : 'false');
-                    } elseif (is_array($argument)) {
-                        $arguments .= sprintf(
-                            '<em title="%s">array|%d|</em>',
-                            htmlspecialchars(self::renderArrayDump($argument, 0, true)),
-                            count($argument)
-                        );
-                    } else {
-                        $arguments .= '<em>' . gettype($argument) . '</em>';
-                    }
-                    $arguments .= '</span>';
-                }
-            }
-
+            $arguments = (isset($step['args']) && is_array($step['args'])) ? self::renderCallArgumentsHtml($step['args']) : '';
             $backtraceCode .= '<pre class="Flow-Debug-Backtrace-Step-Function">';
             $backtraceCode .= $class . $step['function'] . '<span class="color-muted">(' . $arguments . ')</span>';
             $backtraceCode .= '</pre>';
@@ -370,6 +350,49 @@ class Debugger
     }
 
     /**
+     * @param array<int, mixed> $callArguments
+     */
+    protected static function renderCallArgumentsHtml(array $callArguments): string
+    {
+        $arguments = '';
+        foreach ($callArguments as $argument) {
+            $arguments .= ($arguments === '') ? '' : '<span class="color-muted">,</span> ';
+            $arguments .= '<span class="color-text-inverted">';
+            try {
+                if (is_object($argument)) {
+                    $arguments .= '<em>' . self::getObjectSnippetPlaintext($argument) . '</em>';
+                } elseif (is_string($argument)) {
+                    $preparedArgument = (strlen($argument) < 100) ? $argument : substr($argument, 0, 50) . '…' . substr($argument, -50);
+                    $preparedArgument = htmlspecialchars($preparedArgument);
+                    $preparedArgument = str_replace(['…', "\n"], [
+                        '<span class="color-muted">…</span>',
+                        '<span class="color-muted">⏎</span>'
+                    ], $preparedArgument);
+                    $arguments .= '"<span title="' . htmlspecialchars($argument) . '">' . $preparedArgument . '</span>"';
+                } elseif (is_numeric($argument)) {
+                    $arguments .= (string)$argument;
+                } elseif (is_bool($argument)) {
+                    $arguments .= ($argument === true ? 'true' : 'false');
+                } elseif (is_array($argument)) {
+                    $arguments .= sprintf(
+                        '<em title="%s">array|%d|</em>',
+                        htmlspecialchars(self::renderArrayDump($argument, 0, true)),
+                        count($argument)
+                    );
+                } else {
+                    $arguments .= '<em>' . get_debug_type($argument) . '</em>';
+                }
+            } catch (\Throwable $_) {
+                $arguments .= '<em>' . get_debug_type($argument) . '</em>';
+            }
+
+            $arguments .= '</span>';
+        }
+
+        return $arguments;
+    }
+
+    /**
      * @param array $trace
      * @param bool $includeCode
      * @return string
@@ -380,27 +403,7 @@ class Debugger
         foreach ($trace as $index => $step) {
             $class = isset($step['class']) ? $step['class'] . '::' : '';
 
-            $arguments = '';
-            if (isset($step['args']) && is_array($step['args'])) {
-                foreach ($step['args'] as $argument) {
-                    $arguments .= (strlen($arguments) === 0) ? '' : ', ';
-                    if (is_object($argument)) {
-                        $arguments .= get_class($argument);
-                    } elseif (is_string($argument)) {
-                        $preparedArgument = (strlen($argument) < 100) ? $argument : substr($argument, 0, 50) . '…' . substr($argument, -50);
-                        $arguments .= '"' . $preparedArgument . '"';
-                    } elseif (is_numeric($argument)) {
-                        $arguments .= (string)$argument;
-                    } elseif (is_bool($argument)) {
-                        $arguments .= ($argument === true ? 'true' : 'false');
-                    } elseif (is_array($argument)) {
-                        $arguments .= 'array|' . count($argument) . '|';
-                    } else {
-                        $arguments .= gettype($argument);
-                    }
-                }
-            }
-
+            $arguments = (isset($step['args']) && is_array($step['args'])) ? self::renderCallArgumentsPlaintext($step['args']) : '';
             $backtraceCode .= (count($trace) - $index) . ' ' . $class . $step['function'] . '(' . $arguments . ')';
 
             if (isset($step['file']) && $includeCode) {
@@ -410,6 +413,37 @@ class Debugger
         }
 
         return $backtraceCode;
+    }
+
+    /**
+     * @param array<int, mixed> $callArguments
+     */
+    protected static function renderCallArgumentsPlaintext(array $callArguments): string
+    {
+        $arguments = '';
+        foreach ($callArguments as $argument) {
+            $arguments .= (strlen($arguments) === 0) ? '' : ', ';
+            try {
+                if (is_object($argument)) {
+                    $arguments .= self::getObjectSnippetPlaintext($argument);
+                } elseif (is_string($argument)) {
+                    $preparedArgument = (strlen($argument) < 100) ? $argument : substr($argument, 0, 50) . '…' . substr($argument, -50);
+                    $arguments .= '"' . $preparedArgument . '"';
+                } elseif (is_numeric($argument)) {
+                    $arguments .= (string)$argument;
+                } elseif (is_bool($argument)) {
+                    $arguments .= ($argument === true ? 'true' : 'false');
+                } elseif (is_array($argument)) {
+                    $arguments .= 'array|' . count($argument) . '|';
+                } else {
+                    $arguments .= get_debug_type($argument);
+                }
+            } catch (\Throwable $_) {
+                $arguments .= get_debug_type($argument);
+            }
+        }
+
+        return $arguments;
     }
 
     /**
@@ -456,6 +490,35 @@ class Debugger
         }
 
         return $codeSnippet;
+    }
+
+    protected static function getObjectSnippetPlaintext(object $object): string
+    {
+        if (method_exists($object, '__toString')) {
+            return self::getObjectShortName($object) . '|' . self::truncateObjectOutput((string)$object) . '|';
+        }
+
+        if ($object instanceof \JsonSerializable) {
+            return self::getObjectShortName($object) . '|' . self::truncateObjectOutput(json_encode($object, JSON_THROW_ON_ERROR, 1)) . '|';
+        }
+
+        $publicProperties = get_object_vars($object);
+        if (!empty($publicProperties)) {
+            return self::getObjectShortName($object) . '|' . self::truncateObjectOutput(json_encode($publicProperties, JSON_THROW_ON_ERROR, 1)) . '|';
+        }
+
+        return get_class($object);
+    }
+
+    protected static function getObjectShortName(object $object): string
+    {
+        $classNameParts = explode('\\', get_class($object));
+        return array_pop($classNameParts);
+    }
+
+    protected static function truncateObjectOutput(string $stringifiedObject): string
+    {
+        return (strlen($stringifiedObject) > 100) ? substr($stringifiedObject, 0, 100) . '…' : $stringifiedObject;
     }
 
     protected static function getCodeSnippetPlaintext(string $filePathAndName, int $lineNumber): string
@@ -602,7 +665,7 @@ use Neos\Flow\Error\Debugger;
  * @return void|string if $return is true, the variable dump is returned. By default, the dump is directly displayed, and nothing is returned.
  * @api
  */
-function var_dump($variable, string $title = null, bool $return = false, bool $plaintext = null)
+function var_dump($variable, ?string $title = null, bool $return = false, ?bool $plaintext = null)
 {
     if ($plaintext === null) {
         $plaintext = (FLOW_SAPITYPE === 'CLI');

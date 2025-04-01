@@ -17,6 +17,7 @@ use Neos\Flow\Mvc\Exception;
 /**
  * An abstract View
  *
+ * @phpstan-consistent-constructor
  * @api
  */
 abstract class AbstractView implements ViewInterface
@@ -51,6 +52,8 @@ abstract class AbstractView implements ViewInterface
 
     /**
      * @var ControllerContext
+     * @deprecated if you absolutely need access to the current request please assign a variable.
+     *             when using the action controller the request is directly available at "request"
      */
     protected $controllerContext;
 
@@ -58,9 +61,9 @@ abstract class AbstractView implements ViewInterface
      * Factory method to create an instance with given options.
      *
      * @param array $options
-     * @return ViewInterface
+     * @return static
      */
-    public static function createWithOptions(array $options)
+    public static function createWithOptions(array $options): self
     {
         return new static($options);
     }
@@ -83,7 +86,7 @@ abstract class AbstractView implements ViewInterface
             $this->supportedOptions,
             function ($supportedOptionData, $supportedOptionName, $options) {
                 if (isset($supportedOptionData[3]) && !array_key_exists($supportedOptionName, $options)) {
-                    throw new Exception('Required view option not set: ' . $supportedOptionName, 1359625876);
+                    throw new Exception('Required view option not set: ' . $supportedOptionName, 1359625877);
                 }
             },
             $options
@@ -111,7 +114,7 @@ abstract class AbstractView implements ViewInterface
     public function getOption($optionName)
     {
         if (!array_key_exists($optionName, $this->supportedOptions)) {
-            throw new Exception(sprintf('The view option "%s" you\'re trying to get doesn\'t exist in class "%s".', $optionName, get_class($this)), 1359625876);
+            throw new Exception(sprintf('The view option "%s" you\'re trying to get doesn\'t exist in class "%s".', $optionName, get_class($this)), 1359625878);
         }
 
         return $this->options[$optionName];
@@ -128,7 +131,7 @@ abstract class AbstractView implements ViewInterface
     public function setOption($optionName, $value)
     {
         if (!array_key_exists($optionName, $this->supportedOptions)) {
-            throw new Exception(sprintf('The view option "%s" you\'re trying to set doesn\'t exist in class "%s".', $optionName, get_class($this)), 1359625876);
+            throw new Exception(sprintf('The view option "%s" you\'re trying to set doesn\'t exist in class "%s".', $optionName, get_class($this)), 1359625879);
         }
 
         $this->options[$optionName] = $value;
@@ -140,10 +143,10 @@ abstract class AbstractView implements ViewInterface
      *
      * @param string $key Key of variable
      * @param mixed $value Value of object
-     * @return AbstractView an instance of $this, to enable chaining
+     * @return $this for chaining
      * @api
      */
-    public function assign($key, $value)
+    public function assign(string $key, mixed $value): self
     {
         $this->variables[$key] = $value;
         return $this;
@@ -153,10 +156,10 @@ abstract class AbstractView implements ViewInterface
      * Add multiple variables to $this->variables.
      *
      * @param array $values array in the format array(key1 => value1, key2 => value2)
-     * @return AbstractView an instance of $this, to enable chaining
+     * @return $this for chaining
      * @api
      */
-    public function assignMultiple(array $values)
+    public function assignMultiple(array $values): self
     {
         foreach ($values as $key => $value) {
             $this->assign($key, $value);
@@ -167,26 +170,13 @@ abstract class AbstractView implements ViewInterface
     /**
      * Sets the current controller context
      *
-     * @param ControllerContext $controllerContext
+     * @deprecated if you absolutely need access to the current request please assign a variable.
+     *             when using the action controller the request is directly available at "request"
+     * @param ControllerContext $controllerContext Context of the controller associated with this view
      * @return void
-     * @api
      */
     public function setControllerContext(ControllerContext $controllerContext)
     {
         $this->controllerContext = $controllerContext;
-    }
-
-    /**
-     * Tells if the view implementation can render the view for the given context.
-     *
-     * By default we assume that the view implementation can handle all kinds of
-     * contexts. Override this method if that is not the case.
-     *
-     * @param ControllerContext $controllerContext
-     * @return boolean true if the view has something useful to display, otherwise false
-     */
-    public function canRender(ControllerContext $controllerContext)
-    {
-        return true;
     }
 }

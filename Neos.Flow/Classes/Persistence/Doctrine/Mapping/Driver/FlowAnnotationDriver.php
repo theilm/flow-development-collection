@@ -13,6 +13,7 @@ namespace Neos\Flow\Persistence\Doctrine\Mapping\Driver;
 
 use Doctrine\Common\Annotations\AnnotationReader;
 use Doctrine\Common\Annotations\IndexedReader;
+use Doctrine\Common\Annotations\Reader;
 use Doctrine\Persistence\Mapping\ClassMetadata;
 use Doctrine\Persistence\Mapping\Driver\MappingDriver as DoctrineMappingDriverInterface;
 use Doctrine\ORM\EntityManagerInterface;
@@ -25,6 +26,7 @@ use Neos\Flow\Aop\Builder\ClassNameIndex;
 use Neos\Flow\Aop\Pointcut\PointcutFilterInterface;
 use Neos\Flow\ObjectManagement\Proxy\Compiler;
 use Neos\Flow\Persistence\Doctrine\Mapping\Exception\ClassSchemaNotFoundException;
+use Neos\Flow\Persistence\Exception;
 use Neos\Flow\Reflection\ClassSchema;
 use Neos\Flow\Reflection\ReflectionService;
 
@@ -58,7 +60,7 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
     protected $reflectionService;
 
     /**
-     * @var AnnotationReader
+     * @var Reader
      */
     protected $reader;
 
@@ -249,9 +251,11 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
             if ($tableAnnotation->uniqueConstraints !== null) {
                 foreach ($tableAnnotation->uniqueConstraints as $uniqueConstraint) {
                     $uniqueConstraint = ['columns' => $uniqueConstraint->columns];
+                    /** @phpstan-ignore-next-line seperate fix in https://github.com/neos/flow-development-collection/pull/3263 */
                     if (!empty($uniqueConstraint->options)) {
                         $uniqueConstraint['options'] = $uniqueConstraint->options;
                     }
+                    /** @phpstan-ignore-next-line seperate fix in https://github.com/neos/flow-development-collection/pull/3263 */
                     if (!empty($uniqueConstraint->name)) {
                         $primaryTable['uniqueConstraints'][$uniqueConstraint->name] = $uniqueConstraint;
                     } else {
@@ -358,7 +362,6 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
             $inheritanceType = constant('Doctrine\ORM\Mapping\ClassMetadata::INHERITANCE_TYPE_' . strtoupper($inheritanceTypeAnnotation->value));
 
             if ($inheritanceType !== ORM\ClassMetadata::INHERITANCE_TYPE_NONE) {
-
                 // Evaluate DiscriminatorColumn annotation
                 if (isset($classAnnotations[ORM\DiscriminatorColumn::class])) {
                     $discriminatorColumnAnnotation = $classAnnotations[ORM\DiscriminatorColumn::class];
@@ -424,7 +427,7 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
             if (array_diff($idProperties, $metadata->getIdentifierFieldNames()) !== []) {
                 $uniqueIndexName = $this->truncateIdentifier('flow_identity_' . $primaryTable['name']);
                 foreach ($idProperties as $idProperty) {
-                    $primaryTable['uniqueConstraints'][$uniqueIndexName]['columns'][] = isset($metadata->columnNames[$idProperty]) ? $metadata->columnNames[$idProperty] : strtolower($idProperty);
+                    $primaryTable['uniqueConstraints'][$uniqueIndexName]['columns'][] = $metadata->fieldMappings[$idProperty]['columnName'] ?? strtolower($idProperty);
                 }
             }
         }
@@ -598,6 +601,7 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
             $mapping['fieldName'] = $property->getName();
             $mapping['columnName'] = strtolower($property->getName());
             $mapping['targetEntity'] = $propertyMetaData['type'];
+            $mapping['nullable'] = $propertyMetaData['nullable'] ?? false;
 
             $joinColumns = $this->evaluateJoinColumnAnnotations($property);
 
@@ -796,7 +800,7 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
                             if (strpos($propertyMetaData['type'], '\\') !== false) {
                                 if ($this->reflectionService->isClassAnnotatedWith($propertyMetaData['type'], Flow\ValueObject::class)) {
                                     $valueObjectAnnotation = $this->reflectionService->getClassAnnotation($propertyMetaData['type'], Flow\ValueObject::class);
-                                    if ($valueObjectAnnotation->embedded === true) {
+                                    if ($valueObjectAnnotation && $valueObjectAnnotation->embedded === true) {
                                         $mapping['class'] = $propertyMetaData['type'];
                                         $mapping['columnPrefix'] = $mapping['columnName'];
                                         $metadata->mapEmbedded($mapping);
@@ -808,7 +812,7 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
                                     throw ORM\MappingException::missingRequiredOption($property->getName(), 'OneToOne', sprintf('The property "%s" in class "%s" has a non standard data type and doesn\'t define the type of the relation. You have to use one of these annotations: @OneToOne, @OneToMany, @ManyToOne, @ManyToMany', $property->getName(), $className));
                                 }
                             } else {
-                                throw ORM\MappingException::propertyTypeIsRequired($className, $property->getName());
+                                throw new Exception(sprintf('Property Type is required for %s::%s', $className, $property->getName()), 1720281797);
                             }
                     }
                 }
@@ -915,7 +919,6 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
     {
         $joinColumns = [];
 
-        /** @var ORM\JoinColumn $joinColumnAnnotation */
         if ($joinColumnAnnotation = $this->reader->getPropertyAnnotation($property, ORM\JoinColumn::class)) {
             $joinColumns[] = $this->joinColumnToArray($joinColumnAnnotation, strtolower($property->getName()));
         } elseif ($joinColumnsAnnotation = $this->reader->getPropertyAnnotation($property, ORM\JoinColumns::class)) {
@@ -1046,7 +1049,7 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
         }
 
         $proxyAnnotation = $this->reader->getClassAnnotation($class, Flow\Proxy::class);
-        if ($proxyAnnotation === null || $proxyAnnotation->enabled !== false) {
+        if (($proxyAnnotation === null || $proxyAnnotation->enabled !== false) && method_exists($class->getName(), '__wakeup')) {
             $metadata->addLifecycleCallback('__wakeup', Events::postLoad);
         }
     }
@@ -1232,7 +1235,7 @@ class FlowAnnotationDriver implements DoctrineMappingDriverInterface, PointcutFi
     /**
      * Attempts to resolve the fetch mode.
      *
-     * @param string $className The class name
+     * @param class-string $className The class name
      * @param string $fetchMode The fetch mode
      * @return integer The fetch mode as defined in ClassMetadata
      * @throws ORM\MappingException If the fetch mode is not valid

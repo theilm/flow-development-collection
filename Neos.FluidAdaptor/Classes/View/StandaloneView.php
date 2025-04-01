@@ -27,8 +27,8 @@ use Neos\FluidAdaptor\View\Exception\InvalidTemplateResourceException;
  * A standalone template view.
  * Helpful if you want to use Fluid separately from MVC
  * E.g. to generate template based emails.
- *
  * @api
+ * @phpstan-consistent-constructor
  */
 class StandaloneView extends AbstractTemplateView
 {
@@ -65,9 +65,9 @@ class StandaloneView extends AbstractTemplateView
      * Factory method to create an instance with given options.
      *
      * @param array $options
-     * @return StandaloneView
+     * @return static
      */
-    public static function createWithOptions(array $options)
+    public static function createWithOptions(array $options): self
     {
         return new static(null, $options);
     }
@@ -79,7 +79,7 @@ class StandaloneView extends AbstractTemplateView
      * @param array $options
      * @throws \Neos\FluidAdaptor\Exception
      */
-    public function __construct(ActionRequest $request = null, array $options = [])
+    public function __construct(?ActionRequest $request = null, array $options = [])
     {
         $this->request = $request;
         parent::__construct($options);
@@ -225,7 +225,7 @@ class StandaloneView extends AbstractTemplateView
     /**
      * Resolves the layout root to be used inside other paths.
      *
-     * @return string Fluid layout root path
+     * @return array Fluid layout root paths
      * @throws InvalidTemplateResourceException
      * @api
      */
@@ -262,7 +262,7 @@ class StandaloneView extends AbstractTemplateView
     /**
      * Returns the absolute path to the folder that contains Fluid partial files
      *
-     * @return string Fluid partial root path
+     * @return array Fluid partial root paths
      * @throws InvalidTemplateResourceException
      * @api
      */

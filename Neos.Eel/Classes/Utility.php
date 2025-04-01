@@ -18,14 +18,17 @@ namespace Neos\Eel;
 class Utility
 {
     /**
-     * Return the expression if it is an valid EEL expression, otherwise return null.
-     *
-     * @param string $expression
-     * @return string|null
+     * Return the expression if it is a valid EEL expression, null otherwise.
      */
-    public static function parseEelExpression($expression)
+    public static function parseEelExpression(string $expression): ?string
     {
-        return preg_match(Package::EelExpressionRecognizer, $expression, $matches) === 1 ? $matches['exp'] : null;
+        if (!str_starts_with($expression, '${')) {
+            return null;
+        }
+        return match (preg_match(Package::EelExpressionRecognizer, $expression, $matches)) {
+            1 => $matches['exp'],
+            default => null
+        };
     }
 
     /**
@@ -87,7 +90,7 @@ class Utility
      * @return mixed
      * @throws Exception
      */
-    public static function evaluateEelExpression($expression, EelEvaluatorInterface $eelEvaluator, array $contextVariables, array $defaultContextConfiguration = [])
+    public static function evaluateEelExpression($expression, EelEvaluatorInterface $eelEvaluator, array $contextVariables, array $defaultContextConfiguration = [], ?EelInvocationTracerInterface $tracer = null)
     {
         $eelExpression = self::parseEelExpression($expression);
         if ($eelExpression === null) {
@@ -97,7 +100,7 @@ class Utility
         $defaultContextVariables = self::getDefaultContextVariables($defaultContextConfiguration);
         $contextVariables = array_merge($defaultContextVariables, $contextVariables);
 
-        $context = new ProtectedContext($contextVariables);
+        $context = new ProtectedContext($contextVariables, $tracer);
         $context->allow('q');
 
         // Allow functions on the uppermost context level to allow calling them without

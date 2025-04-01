@@ -1,4 +1,5 @@
 <?php
+
 namespace Neos\Flow\Persistence\Doctrine;
 
 /*
@@ -13,6 +14,7 @@ namespace Neos\Flow\Persistence\Doctrine;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
+use Doctrine\ORM\Event\PrePersistEventArgs;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Persistence\Exception\ObjectValidationFailedException;
 use Neos\Flow\Reflection\ClassSchema;
@@ -55,6 +57,36 @@ class ObjectValidationAndDeDuplicationListener
     protected $entityManager;
 
     /**
+     * An prePersist event listener to deduplicate value objects.
+     *
+     * This removes all existing value objects in doctrines identity map. This is needed as doctrine handles their
+     * identity based on the object and not based on the
+     *
+     * @param PrePersistEventArgs $eventArgs
+     * @return void
+     */
+    public function prePersist(PrePersistEventArgs $eventArgs)
+    {
+        $entityManager = $eventArgs->getObjectManager();
+        $unitOfWork = $entityManager->getUnitOfWork();
+        $objectToPersist = $eventArgs->getObject();
+
+        $classMetadata = $entityManager->getClassMetadata(get_class($objectToPersist));
+        $className = $classMetadata->rootEntityName;
+
+        $classSchema = $this->reflectionService->getClassSchema($className);
+        $identityMapOfClassName = $unitOfWork->getIdentityMap()[$className] ?? [];
+
+        if ($classSchema !== null && $classSchema->getModelType() === ClassSchema::MODELTYPE_VALUEOBJECT) {
+            foreach ($identityMapOfClassName as $objectInIdentityMap) {
+                if ($this->persistenceManager->getIdentifierByObject($objectInIdentityMap) === $this->persistenceManager->getIdentifierByObject($objectToPersist)) {
+                    $unitOfWork->removeFromIdentityMap($objectInIdentityMap);
+                }
+            }
+        }
+    }
+
+    /**
      * An onFlush event listener used to act upon persistence.
      *
      * @param OnFlushEventArgs $eventArgs
@@ -63,7 +95,7 @@ class ObjectValidationAndDeDuplicationListener
      */
     public function onFlush(OnFlushEventArgs $eventArgs)
     {
-        $this->entityManager = $eventArgs->getEntityManager();
+        $this->entityManager = $eventArgs->getObjectManager();
         $validatedInstancesContainer = new \SplObjectStorage();
 
         $this->deduplicateValueObjectInsertions();
@@ -90,21 +122,20 @@ class ObjectValidationAndDeDuplicationListener
         $entityInsertions = $unitOfWork->getScheduledEntityInsertions();
 
         $knownValueObjects = [];
-        foreach ($entityInsertions as $entity) {
+        foreach ($entityInsertions as $oid => $entity) {
             $className = TypeHandling::getTypeForValue($entity);
             $classSchema = $this->reflectionService->getClassSchema($className);
             if ($classSchema !== null && $classSchema->getModelType() === ClassSchema::MODELTYPE_VALUEOBJECT) {
                 $identifier = $this->persistenceManager->getIdentifierByObject($entity);
 
                 if (isset($knownValueObjects[$className][$identifier]) || $unitOfWork->getEntityPersister($className)->exists($entity)) {
-                    unset($entityInsertions[spl_object_hash($entity)]);
+                    unset($entityInsertions[$oid]);
                     continue;
                 }
 
                 $knownValueObjects[$className][$identifier] = true;
             }
         }
-
         ObjectAccess::setProperty($unitOfWork, 'entityInsertions', $entityInsertions, true);
     }
 

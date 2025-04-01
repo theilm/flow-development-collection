@@ -127,14 +127,14 @@ class LoggingAspect
 
         switch ($token->getAuthenticationStatus()) {
             case TokenInterface::AUTHENTICATION_SUCCESSFUL:
-                $this->securityLogger->notice(sprintf('Successfully authenticated token: %s', $token), $this->getLogEnvironmentFromJoinPoint($joinPoint));
+                $this->securityLogger->info(sprintf('Successfully authenticated token: %s', $token), $this->getLogEnvironmentFromJoinPoint($joinPoint));
                 $this->alreadyLoggedAuthenticateCall = true;
                 break;
             case TokenInterface::WRONG_CREDENTIALS:
-                $this->securityLogger->warning(sprintf('Wrong credentials given for token: %s', $token), $this->getLogEnvironmentFromJoinPoint($joinPoint));
+                $this->securityLogger->notice(sprintf('Wrong credentials given for token: %s', $token), $this->getLogEnvironmentFromJoinPoint($joinPoint));
                 break;
             case TokenInterface::NO_CREDENTIALS_GIVEN:
-                $this->securityLogger->warning(sprintf('No credentials given or no account found for token: %s', $token), $this->getLogEnvironmentFromJoinPoint($joinPoint));
+                $this->securityLogger->notice(sprintf('No credentials given or no account found for token: %s', $token), $this->getLogEnvironmentFromJoinPoint($joinPoint));
                 break;
         }
     }
@@ -151,7 +151,7 @@ class LoggingAspect
         $subjectJoinPoint = $joinPoint->getMethodArgument('subject');
         $decision = $joinPoint->getResult() === true ? 'GRANTED' : 'DENIED';
         $message = sprintf('Decided "%s" on method call %s::%s().', $decision, $subjectJoinPoint->getClassName(), $subjectJoinPoint->getMethodName());
-        $this->securityLogger->info($message, $this->getLogEnvironmentFromJoinPoint($joinPoint));
+        $this->securityLogger->debug($message, $this->getLogEnvironmentFromJoinPoint($joinPoint));
     }
 
     /**
@@ -165,7 +165,7 @@ class LoggingAspect
     {
         $decision = $joinPoint->getResult() === true ? 'GRANTED' : 'DENIED';
         $message = sprintf('Decided "%s" on privilege "%s".', $decision, $joinPoint->getMethodArgument('privilegeTargetIdentifier'));
-        $this->securityLogger->info($message, $this->getLogEnvironmentFromJoinPoint($joinPoint));
+        $this->securityLogger->debug($message, $this->getLogEnvironmentFromJoinPoint($joinPoint));
     }
 
     /**

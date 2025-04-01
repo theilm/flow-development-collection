@@ -11,10 +11,20 @@ namespace Neos\Flow\Mvc\Controller;
  * source code.
  */
 
+use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Psr7\Utils;
 use Neos\Error\Messages as Error;
 use Neos\Flow\Annotations as Flow;
-use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\Uri;
+use Neos\Flow\Mvc\Exception\InvalidActionNameException;
+use Neos\Flow\Mvc\Exception\InvalidArgumentNameException;
+use Neos\Flow\Mvc\Exception\InvalidArgumentTypeException;
+use Neos\Flow\Mvc\Exception\InvalidControllerNameException;
+use Neos\Flow\Mvc\Exception\NoSuchArgumentException;
+use Neos\Flow\Mvc\Routing\Exception\MissingActionNameException;
+use Neos\Flow\Mvc\Routing\RouteValuesNormalizerInterface;
+use Neos\Flow\Persistence\Exception\UnknownObjectException;
+use Neos\Flow\Property\Exception;
 use Psr\Http\Message\UriInterface;
 use Neos\Flow\Http\Helper\MediaTypeHelper;
 use Neos\Flow\Http\Helper\ResponseInformationHelper;
@@ -23,10 +33,7 @@ use Neos\Flow\Mvc\ActionResponse;
 use Neos\Flow\Mvc\Exception\ForwardException;
 use Neos\Flow\Mvc\Exception\RequiredArgumentMissingException;
 use Neos\Flow\Mvc\Exception\StopActionException;
-use Neos\Flow\Mvc\Exception\UnsupportedRequestTypeException;
-use Neos\Flow\Mvc\FlashMessage\FlashMessageContainer;
 use Neos\Flow\Mvc\Routing\UriBuilder;
-use Neos\Flow\Persistence\PersistenceManagerInterface;
 use Neos\Flow\Validation\ValidatorResolver;
 use Neos\Utility\MediaTypes;
 
@@ -56,9 +63,20 @@ abstract class AbstractController implements ControllerInterface
     protected $request;
 
     /**
-     * The response which will be returned by this action controller
+     * The legacy response which will is provide by this action controller
+     *
+     * Legacy ways to modify a repose:
+     *
+     * - $this->response->addHttpHeader
+     * - $this->response->setHttpHeader
+     * - $this->response->setContentType
+     * - $this->response->setStatusCode
+     *
+     * Please return a new {@see Response} instead from your controller action.
+     * Documentation to adjust your code is provided in {@see ActionResponse}.
+     *
      * @var ActionResponse
-     * @api
+     * @deprecated with Flow 9 {@see ActionResponse}
      */
     protected $response;
 
@@ -76,9 +94,9 @@ abstract class AbstractController implements ControllerInterface
 
     /**
      * @Flow\Inject
-     * @var PersistenceManagerInterface
+     * @var RouteValuesNormalizerInterface
      */
-    protected $persistenceManager;
+    protected $routeValuesNormalizer;
 
     /**
      * A list of IANA media types which are supported by this controller
@@ -89,32 +107,39 @@ abstract class AbstractController implements ControllerInterface
     protected $supportedMediaTypes = ['text/html'];
 
     /**
+     * The media type that was negotiated by this controller
+     *
+     * @var string
+     */
+    protected $negotiatedMediaType;
+
+    /**
      * Initializes the controller
      *
      * This method should be called by the concrete processRequest() method.
      *
      * @param ActionRequest $request
      * @param ActionResponse $response
-     * @throws UnsupportedRequestTypeException
      */
     protected function initializeController(ActionRequest $request, ActionResponse $response)
     {
+        // make the current request and response "globally" available to everywhere in this controller.
         $this->request = $request;
-        $this->request->setDispatched(true);
         $this->response = $response;
 
         $this->uriBuilder = new UriBuilder();
-        $this->uriBuilder->setRequest($this->request);
+        $this->uriBuilder->setRequest($request);
 
         $this->arguments = new Arguments([]);
-        $this->controllerContext = new ControllerContext($this->request, $this->response, $this->arguments, $this->uriBuilder);
+        $this->controllerContext = new ControllerContext($request, $response, $this->arguments, $this->uriBuilder);
 
         $mediaType = MediaTypeHelper::negotiateMediaType(MediaTypeHelper::determineAcceptedMediaTypes($request->getHttpRequest()), $this->supportedMediaTypes);
         if ($mediaType === null) {
             $this->throwStatus(406);
         }
+        $this->negotiatedMediaType = $mediaType;
         if ($request->getFormat() === '') {
-            $this->request->setFormat(MediaTypes::getFilenameExtensionFromMediaType($mediaType));
+            $request->setFormat(MediaTypes::getFilenameExtensionFromMediaType($mediaType));
         }
     }
 
@@ -162,7 +187,7 @@ abstract class AbstractController implements ControllerInterface
                 break;
             default:
                 $message = new Error\Message($messageBody, $messageCode, $messageArguments, $messageTitle);
-            break;
+                break;
         }
         $this->controllerContext->getFlashMessageContainer()->addMessage($message);
     }
@@ -173,15 +198,20 @@ abstract class AbstractController implements ControllerInterface
      * Request is directly transferred to the other action / controller
      *
      * @param string $actionName Name of the action to forward to
-     * @param string $controllerName Unqualified object name of the controller to forward to. If not specified, the current controller is used.
-     * @param string $packageKey Key of the package containing the controller to forward to. May also contain the sub package, concatenated with backslash (Vendor.Foo\Bar\Baz). If not specified, the current package is assumed.
-     * @param array $arguments Arguments to pass to the target action
-     * @return void
+     * @param string|null $controllerName Unqualified object name of the controller to forward to. If not specified, the current controller is used.
+     * @param string|null $packageKey Key of the package containing the controller to forward to. May also contain the sub package, concatenated with backslash (Vendor.Foo\Bar\Baz). If not specified, the current package is assumed.
+     * @param array<string, mixed> $arguments Arguments to pass to the target action
+     * @return never
      * @throws ForwardException
+     * @throws InvalidActionNameException
+     * @throws InvalidArgumentNameException
+     * @throws InvalidArgumentTypeException
+     * @throws InvalidControllerNameException
+     * @throws UnknownObjectException
      * @see redirect()
      * @api
      */
-    protected function forward($actionName, $controllerName = null, $packageKey = null, array $arguments = [])
+    protected function forward(string $actionName, ?string $controllerName = null, ?string $packageKey = null, array $arguments = []): never
     {
         $nextRequest = clone $this->request;
         $nextRequest->setControllerActionName($actionName);
@@ -189,8 +219,8 @@ abstract class AbstractController implements ControllerInterface
         if ($controllerName !== null) {
             $nextRequest->setControllerName($controllerName);
         }
-        if ($packageKey !== null && strpos($packageKey, '\\') !== false) {
-            list($packageKey, $subpackageKey) = explode('\\', $packageKey, 2);
+        if ($packageKey !== null && str_contains($packageKey, '\\')) {
+            [$packageKey, $subpackageKey] = explode('\\', $packageKey, 2);
         } else {
             $subpackageKey = null;
         }
@@ -201,18 +231,16 @@ abstract class AbstractController implements ControllerInterface
 
         $regularArguments = [];
         foreach ($arguments as $argumentName => $argumentValue) {
-            if (substr($argumentName, 0, 2) === '__') {
+            if (str_starts_with($argumentName, '__')) {
                 $nextRequest->setArgument($argumentName, $argumentValue);
             } else {
                 $regularArguments[$argumentName] = $argumentValue;
             }
         }
-        $nextRequest->setArguments($this->persistenceManager->convertObjectsToIdentityArrays($regularArguments));
+        $nextRequest->setArguments($this->routeValuesNormalizer->normalizeObjects($regularArguments));
         $this->arguments->removeAll();
 
-        $forwardException = new ForwardException();
-        $forwardException->setNextRequest($nextRequest);
-        throw $forwardException;
+        $this->forwardToRequest($nextRequest);
     }
 
     /**
@@ -221,19 +249,14 @@ abstract class AbstractController implements ControllerInterface
      * Request is directly transfered to the other action / controller
      *
      * @param ActionRequest $request The request to redirect to
-     * @return void
      * @throws ForwardException
      * @see redirectToRequest()
      * @api
      */
-    protected function forwardToRequest(ActionRequest $request)
+    protected function forwardToRequest(ActionRequest $request): never
     {
-        $packageKey = $request->getControllerPackageKey();
-        $subpackageKey = $request->getControllerSubpackageKey();
-        if ($subpackageKey !== null) {
-            $packageKey .= '\\' . $subpackageKey;
-        }
-        $this->forward($request->getControllerActionName(), $request->getControllerName(), $packageKey, $request->getArguments());
+        $nextRequest = clone $request;
+        throw ForwardException::createForNextRequest($nextRequest, '');
     }
 
     /**
@@ -245,21 +268,23 @@ abstract class AbstractController implements ControllerInterface
      * if used with other request types.
      *
      * @param string $actionName Name of the action to forward to
-     * @param string $controllerName Unqualified object name of the controller to forward to. If not specified, the current controller is used.
-     * @param string $packageKey Key of the package containing the controller to forward to. If not specified, the current package is assumed.
-     * @param array $arguments Array of arguments for the target action
+     * @param string|null $controllerName Unqualified object name of the controller to forward to. If not specified, the current controller is used.
+     * @param string|null $packageKey Key of the package containing the controller to forward to. If not specified, the current package is assumed.
+     * @param array<string, mixed> $arguments Array of arguments for the target action
      * @param integer $delay (optional) The delay in seconds. Default is no delay.
      * @param integer $statusCode (optional) The HTTP status code for the redirect. Default is "303 See Other"
-     * @param string $format The format to use for the redirect URI
-     * @return void
+     * @param string|null $format The format to use for the redirect URI
+     * @return never
      * @throws StopActionException
+     * @throws \Neos\Flow\Http\Exception
+     * @throws MissingActionNameException
      * @see forward()
      * @api
      */
-    protected function redirect($actionName, $controllerName = null, $packageKey = null, array $arguments = [], $delay = 0, $statusCode = 303, $format = null)
+    protected function redirect(string $actionName, ?string $controllerName = null, ?string $packageKey = null, array $arguments = [], int $delay = 0, int $statusCode = 303, ?string $format = null): never
     {
-        if ($packageKey !== null && strpos($packageKey, '\\') !== false) {
-            list($packageKey, $subpackageKey) = explode('\\', $packageKey, 2);
+        if ($packageKey !== null && str_contains($packageKey, '\\') !== false) {
+            [$packageKey, $subpackageKey] = explode('\\', $packageKey, 2);
         } else {
             $subpackageKey = null;
         }
@@ -279,18 +304,17 @@ abstract class AbstractController implements ControllerInterface
      *
      * Redirect will be sent to the client which then performs another request to the new URI.
      *
-     * NOTE: This method only supports web requests and will throw an exception
-     * if used with other request types.
-     *
      * @param ActionRequest $request The request to redirect to
      * @param integer $delay (optional) The delay in seconds. Default is no delay.
      * @param integer $statusCode (optional) The HTTP status code for the redirect. Default is "303 See Other"
-     * @return void
+     * @return never
+     * @throws MissingActionNameException
      * @throws StopActionException
+     * @throws \Neos\Flow\Http\Exception
      * @see forwardToRequest()
      * @api
      */
-    protected function redirectToRequest(ActionRequest $request, $delay = 0, $statusCode = 303)
+    protected function redirectToRequest(ActionRequest $request, int $delay = 0, int $statusCode = 303): never
     {
         $packageKey = $request->getControllerPackageKey();
         $subpackageKey = $request->getControllerSubpackageKey();
@@ -303,25 +327,29 @@ abstract class AbstractController implements ControllerInterface
     /**
      * Redirects to another URI
      *
-     * @param mixed $uri Either a string representation of a URI or a \Neos\Flow\Http\Uri object
+     * @param UriInterface|string $uri Either a string or a psr uri
      * @param integer $delay (optional) The delay in seconds. Default is no delay.
      * @param integer $statusCode (optional) The HTTP status code for the redirect. Default is "303 See Other"
-     * @throws UnsupportedRequestTypeException If the request is not a web request
      * @throws StopActionException
      * @api
      */
-    protected function redirectToUri($uri, $delay = 0, $statusCode = 303)
+    protected function redirectToUri(string|UriInterface $uri, int $delay = 0, int $statusCode = 303): never
     {
+        $httpResponse = $this->response->buildHttpResponse();
         if ($delay === 0) {
             if (!$uri instanceof UriInterface) {
                 $uri = new Uri($uri);
             }
-            $this->response->setRedirectUri($uri, $statusCode);
+            $httpResponse = $httpResponse
+                ->withStatus($statusCode)
+                ->withHeader('Location', (string)$uri);
         } else {
-            $this->response->setStatusCode($statusCode);
-            $this->response->setContent('<html><head><meta http-equiv="refresh" content="' . (int)$delay . ';url=' . $uri . '"/></head></html>');
+            $content = '<html><head><meta http-equiv="refresh" content="' . (int)$delay . ';url=' . $uri . '"/></head></html>';
+            $httpResponse = $httpResponse
+                ->withStatus($statusCode)
+                ->withBody(Utils::streamFor($content));
         }
-        throw new StopActionException();
+        throw StopActionException::createForResponse($httpResponse, '');
     }
 
     /**
@@ -335,9 +363,10 @@ abstract class AbstractController implements ControllerInterface
      * @throws StopActionException
      * @api
      */
-    protected function throwStatus(int $statusCode, $statusMessage = null, $content = null)
+    protected function throwStatus(int $statusCode, $statusMessage = null, $content = null): never
     {
-        $this->response->setStatusCode($statusCode);
+        $httpResponse = $this->response->buildHttpResponse();
+        $httpResponse = $httpResponse->withStatus($statusCode);
         if ($content === null) {
             $content = sprintf(
                 '%s %s',
@@ -345,26 +374,30 @@ abstract class AbstractController implements ControllerInterface
                 $statusMessage ?? ResponseInformationHelper::getStatusMessageByCode($statusCode)
             );
         }
-        $this->response->setContent($content);
-        throw new StopActionException($content, 1558088618);
+        $httpResponse = $httpResponse->withBody(Utils::streamFor($content));
+        throw StopActionException::createForResponse($httpResponse, $content);
     }
 
     /**
      * Maps arguments delivered by the request object to the local controller arguments.
      *
+     * @param ActionRequest $request
      * @return void
      * @throws RequiredArgumentMissingException
+     * @throws NoSuchArgumentException
+     * @throws Exception
+     * @throws \Neos\Flow\Security\Exception
      * @api
      */
-    protected function mapRequestArgumentsToControllerArguments()
+    protected function mapRequestArgumentsToControllerArguments(ActionRequest $request, Arguments $arguments)
     {
         /* @var $argument \Neos\Flow\Mvc\Controller\Argument */
-        foreach ($this->arguments as $argument) {
+        foreach ($arguments as $argument) {
             $argumentName = $argument->getName();
             if ($argument->getMapRequestBody()) {
-                $argument->setValue($this->request->getHttpRequest()->getParsedBody());
-            } elseif ($this->request->hasArgument($argumentName)) {
-                $argument->setValue($this->request->getArgument($argumentName));
+                $argument->setValue($request->getHttpRequest()->getParsedBody());
+            } elseif ($request->hasArgument($argumentName)) {
+                $argument->setValue($request->getArgument($argumentName));
             } elseif ($argument->isRequired()) {
                 throw new RequiredArgumentMissingException('Required argument "' . $argumentName  . '" is not set.', 1298012500);
             }

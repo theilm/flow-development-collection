@@ -27,7 +27,6 @@ use Neos\Eel\ProtectedContextAwareInterface;
  */
 class ArrayHelper implements ProtectedContextAwareInterface
 {
-
     /**
      * Concatenate arrays or values to a new array
      *
@@ -356,14 +355,23 @@ class ArrayHelper implements ProtectedContextAwareInterface
      *
      *     Array.push(array, e1, e2)
      *
-     * @param iterable $array
+     * @param iterable|scalar|null $array
      * @param mixed $element
      * @return array The array with the inserted elements
      */
-    public function push(iterable $array, $element): array
+    public function push($array, $element): array
     {
         if ($array instanceof \Traversable) {
             $array = iterator_to_array($array);
+        }
+        if (is_scalar($array)) {
+            $array = [$array];
+        }
+        if ($array === null) {
+            $array = [];
+        }
+        if (is_array($array) === false) {
+            throw new \InvalidArgumentException('$array must be of type iterable|scalar|null got: ' . gettype($array), 1647595715);
         }
         $elements = func_get_args();
         array_shift($elements);
@@ -554,12 +562,16 @@ class ArrayHelper implements ProtectedContextAwareInterface
      * @param callable $callback Callback for testing if an element should be included in the result, current value and key will be passed as arguments
      * @return array The array with elements where callback returned true
      */
-    public function filter(iterable $array, callable $callback = null): array
+    public function filter(iterable $array, ?callable $callback = null): array
     {
         if ($array instanceof \Traversable) {
             $array = iterator_to_array($array);
         }
-        return array_filter($array, $callback, ARRAY_FILTER_USE_BOTH);
+        if (is_null($callback)) {
+            return array_filter($array);
+        } else {
+            return array_filter($array, $callback, ARRAY_FILTER_USE_BOTH);
+        }
     }
 
     /**

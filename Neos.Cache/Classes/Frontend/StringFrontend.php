@@ -37,7 +37,7 @@ class StringFrontend extends AbstractFrontend
      * @throws \Neos\Cache\Exception
      * @api
      */
-    public function set(string $entryIdentifier, $string, array $tags = [], int $lifetime = null)
+    public function set(string $entryIdentifier, $string, array $tags = [], ?int $lifetime = null)
     {
         if (!$this->isValidEntryIdentifier($entryIdentifier)) {
             throw new \InvalidArgumentException('"' . $entryIdentifier . '" is not a valid cache entry identifier.', 1233057566);
@@ -58,7 +58,7 @@ class StringFrontend extends AbstractFrontend
      * Finds and returns a variable value from the cache.
      *
      * @param string $entryIdentifier Identifier of the cache entry to fetch
-     * @return string The value
+     * @return string|false The value or false if the cache entry could not be loaded
      * @throws \InvalidArgumentException
      * @api
      */

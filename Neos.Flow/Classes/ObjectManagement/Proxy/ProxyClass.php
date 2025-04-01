@@ -11,15 +11,16 @@ namespace Neos\Flow\ObjectManagement\Proxy;
  * source code.
  */
 
+use Laminas\Code\Reflection\MethodReflection;
 use Neos\Flow\Annotations as Flow;
+use Neos\Flow\ObjectManagement\Exception\CannotBuildObjectException;
 use Neos\Flow\Reflection\ClassReflection;
 use Neos\Flow\Reflection\ReflectionService;
 
 /**
  * Representation of a Proxy Class during rendering time
- *
- * @Flow\Proxy(false)
  */
+#[Flow\Proxy(false)]
 class ProxyClass
 {
     /**
@@ -39,12 +40,12 @@ class ProxyClass
     /**
      * Fully qualified class name of the original class
      *
-     * @var string
+     * @var class-string
      */
     protected $fullOriginalClassName;
 
     /**
-     * @var ProxyConstructor
+     * @var ProxyConstructorGenerator
      */
     protected $constructor;
 
@@ -83,11 +84,11 @@ class ProxyClass
     /**
      * Creates a new ProxyClass instance.
      *
-     * @param string $fullOriginalClassName The fully qualified class name of the original class
+     * @param class-string $fullOriginalClassName The fully qualified class name of the original class
      */
-    public function __construct($fullOriginalClassName)
+    public function __construct(string $fullOriginalClassName)
     {
-        if (strpos($fullOriginalClassName, '\\') === false) {
+        if (!str_contains($fullOriginalClassName, '\\')) {
             $this->originalClassName = $fullOriginalClassName;
         } else {
             $this->namespace = substr($fullOriginalClassName, 0, strrpos($fullOriginalClassName, '\\'));
@@ -102,21 +103,27 @@ class ProxyClass
      * @param ReflectionService $reflectionService
      * @return void
      */
-    public function injectReflectionService(ReflectionService $reflectionService)
+    public function injectReflectionService(ReflectionService $reflectionService): void
     {
         $this->reflectionService = $reflectionService;
     }
 
     /**
-     * Returns the ProxyConstructor for this ProxyClass. Creates it if needed.
+     * Returns the ProxyConstructorGenerator for this ProxyClass. Creates it if needed.
      *
-     * @return ProxyConstructor
+     * @return ProxyConstructorGenerator
+     * @throws \ReflectionException
+     * @throws CannotBuildObjectException
      */
-    public function getConstructor()
+    public function getConstructor(): ProxyConstructorGenerator
     {
         if (!isset($this->constructor)) {
-            $this->constructor = new ProxyConstructor($this->fullOriginalClassName);
-            $this->constructor->injectReflectionService($this->reflectionService);
+            if (method_exists($this->fullOriginalClassName, '__construct')) {
+                $this->constructor = ProxyConstructorGenerator::fromReflection(new MethodReflection($this->fullOriginalClassName, '__construct'));
+            } else {
+                $this->constructor = new ProxyConstructorGenerator();
+                $this->constructor->setFullOriginalClassName($this->fullOriginalClassName);
+            }
         }
         return $this->constructor;
     }
@@ -124,18 +131,21 @@ class ProxyClass
     /**
      * Returns the named ProxyMethod for this ProxyClass. Creates it if needed.
      *
-     * @param string $methodName The name of the methods to return
-     * @return ProxyMethod
+     * @throws \ReflectionException
      */
-    public function getMethod($methodName)
+    public function getMethod(string $methodName): ProxyMethodGenerator|ProxyConstructorGenerator
     {
         if ($methodName === '__construct') {
             return $this->getConstructor();
         }
         if (!isset($this->methods[$methodName])) {
-            $this->methods[$methodName] = new ProxyMethod($this->fullOriginalClassName, $methodName);
-            $this->methods[$methodName]->injectReflectionService($this->reflectionService);
+            if (method_exists($this->fullOriginalClassName, $methodName)) {
+                $this->methods[$methodName] = ProxyMethodGenerator::copyMethodSignatureAndDocblock(new MethodReflection($this->fullOriginalClassName, $methodName));
+            } else {
+                $this->methods[$methodName] = new ProxyMethodGenerator($methodName);
+            }
         }
+        $this->methods[$methodName]->getDocBlock()?->setWordWrap(false);
         return $this->methods[$methodName];
     }
 
@@ -146,7 +156,7 @@ class ProxyClass
      * @param string $valueCode PHP code which assigns the value. Example: 'foo' (including quotes!)
      * @return void
      */
-    public function addConstant($name, $valueCode)
+    public function addConstant(string $name, string $valueCode): void
     {
         $this->constants[$name] = $valueCode;
     }
@@ -160,8 +170,9 @@ class ProxyClass
      * @param string $docComment
      * @return void
      */
-    public function addProperty($name, $initialValueCode, $visibility = 'private', $docComment = '')
+    public function addProperty(string $name, string $initialValueCode, string $visibility = 'private', string $docComment = ''): void
     {
+        // TODO: Add support for PHP attributes?
         $this->properties[$name] = [
             'initialValueCode' => $initialValueCode,
             'visibility' => $visibility,
@@ -178,7 +189,7 @@ class ProxyClass
      * @param array $interfaceNames Fully qualified names of the interfaces to introduce
      * @return void
      */
-    public function addInterfaces(array $interfaceNames)
+    public function addInterfaces(array $interfaceNames): void
     {
         $this->interfaces = array_merge($this->interfaces, $interfaceNames);
     }
@@ -192,7 +203,7 @@ class ProxyClass
      * @param array $traitNames
      * @return void
      */
-    public function addTraits(array $traitNames)
+    public function addTraits(array $traitNames): void
     {
         $this->traits = array_merge($this->traits, $traitNames);
     }
@@ -201,10 +212,10 @@ class ProxyClass
      * Renders and returns the PHP code for this ProxyClass.
      *
      * @return string
+     * @throws CannotBuildObjectException
      */
-    public function render()
+    public function render(): string
     {
-        $namespace = $this->namespace;
         $proxyClassName = $this->originalClassName;
         $originalClassName = $this->originalClassName . Compiler::ORIGINAL_CLASSNAME_SUFFIX;
         $classModifier = '';
@@ -213,31 +224,45 @@ class ProxyClass
         } elseif ($this->reflectionService->isClassFinal($this->fullOriginalClassName)) {
             $classModifier = 'final ';
         }
+        if ($this->reflectionService->isClassReadonly($this->fullOriginalClassName)) {
+            $classModifier .= 'readonly ';
+        }
 
         $constantsCode = $this->renderConstantsCode();
         $propertiesCode = $this->renderPropertiesCode();
         $traitsCode = $this->renderTraitsCode();
+        $methodsCode = '';
 
-        $methodsCode = isset($this->constructor) ? $this->constructor->render() : '';
-        foreach ($this->methods as $proxyMethod) {
-            $methodsCode .= $proxyMethod->render();
+        $constructorBodyCode = $this->constructor?->renderBodyCode() ?? '';
+        if ($this->constructor !== null && $constructorBodyCode !== '') {
+            $this->constructor->setBody($constructorBodyCode);
+            $methodsCode .= PHP_EOL . $this->constructor->generate();
+
+            foreach (class_implements($this->fullOriginalClassName) as $interface) {
+                if (method_exists($interface, '__construct')) {
+                    throw new CannotBuildObjectException(sprintf('The class "%s" implements the interface "%s" which has a constructor. Proxy classes implementing an interface containing a constructor is not supported and constructors interfaces are generally strongly discouraged.', $this->fullOriginalClassName, $interface), 1685433328);
+                }
+            }
         }
 
-        if ($methodsCode . $constantsCode === '') {
+        foreach ($this->methods as $proxyMethod) {
+            assert($proxyMethod instanceof ProxyMethodGenerator);
+            if ($proxyMethod->willBeRendered()) {
+                $methodsCode .= PHP_EOL . $proxyMethod->generate();
+            }
+        }
+
+        if (trim($methodsCode) . $constantsCode === '') {
             return '';
         }
-        $classCode = ($namespace !== '' ? 'namespace ' . $namespace . ";\n\n" : '') .
-            "use Doctrine\\ORM\\Mapping as ORM;\n" .
-            "use Neos\\Flow\\Annotations as Flow;\n" .
-            "\n" .
-            $this->buildClassDocumentation() .
-            $classModifier . 'class ' . $proxyClassName . ' extends ' . $originalClassName . ' implements ' . implode(', ', array_unique($this->interfaces)) . " {\n\n" .
+
+        return $this->buildClassDocumentation() .
+            $classModifier . 'class ' . $proxyClassName . ' extends ' . $originalClassName . ' implements ' . implode(', ', array_unique($this->interfaces)) . " {" . PHP_EOL . PHP_EOL .
             $traitsCode .
             $constantsCode .
             $propertiesCode .
-            $methodsCode .
-            '}';
-        return $classCode;
+            rtrim($methodsCode) .
+            PHP_EOL. '}';
     }
 
     /**
@@ -245,19 +270,15 @@ class ProxyClass
      *
      * @return string $methodDocumentation DocComment for the given method
      */
-    protected function buildClassDocumentation()
+    protected function buildClassDocumentation(): string
     {
-        $classDocumentation = "/**\n";
-
         $classReflection = new ClassReflection($this->fullOriginalClassName);
-        $classDescription = $classReflection->getDescription();
-        $classDocumentation .= ' * ' . str_replace("\n", "\n * ", $classDescription) . "\n";
 
-        foreach ($this->reflectionService->getClassAnnotations($this->fullOriginalClassName) as $annotation) {
-            $classDocumentation .= ' * ' . Compiler::renderAnnotation($annotation) . "\n";
+        $classDocumentation = str_replace("*/", "* @codeCoverageIgnore\n */", $classReflection->getDocComment()) . "\n";
+        foreach ($classReflection->getAttributes() as $attribute) {
+            $classDocumentation .= Compiler::renderAttribute($attribute) . "\n";
         }
 
-        $classDocumentation .= " */\n";
         return $classDocumentation;
     }
 
@@ -266,11 +287,11 @@ class ProxyClass
      *
      * @return string
      */
-    protected function renderConstantsCode()
+    protected function renderConstantsCode(): string
     {
         $code = '';
         foreach ($this->constants as $name => $valueCode) {
-            $code .= '    const ' . $name . ' = ' . $valueCode . ";\n\n";
+            $code .= '    const ' . $name . ' = ' . $valueCode . ";\n";
         }
         return $code;
     }
@@ -280,14 +301,14 @@ class ProxyClass
      *
      * @return string
      */
-    protected function renderPropertiesCode()
+    protected function renderPropertiesCode(): string
     {
         $code = '';
         foreach ($this->properties as $name => $attributes) {
             if (!empty($attributes['docComment'])) {
                 $code .= '    ' . $attributes['docComment'] . "\n";
             }
-            $code .= '    ' . $attributes['visibility'] . ' $' . $name . ' = ' . $attributes['initialValueCode'] . ";\n\n";
+            $code .= '    ' . $attributes['visibility'] . ' $' . $name . ' = ' . $attributes['initialValueCode'] . ";\n";
         }
         return $code;
     }
@@ -297,7 +318,7 @@ class ProxyClass
      *
      * @return string
      */
-    protected function renderTraitsCode()
+    protected function renderTraitsCode(): string
     {
         if ($this->traits === []) {
             return '';

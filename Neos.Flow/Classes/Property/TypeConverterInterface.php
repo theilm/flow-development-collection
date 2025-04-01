@@ -49,7 +49,7 @@ interface TypeConverterInterface
      * @return string
      * @api
      */
-    public function getTargetTypeForSource($source, $originalTargetType, PropertyMappingConfigurationInterface $configuration = null);
+    public function getTargetTypeForSource($source, $originalTargetType, ?PropertyMappingConfigurationInterface $configuration = null);
 
     /**
      * Return the priority of this TypeConverter. TypeConverters with a high priority are chosen before low priority.
@@ -86,7 +86,7 @@ interface TypeConverterInterface
      * @param string $targetType
      * @param string $propertyName
      * @param PropertyMappingConfigurationInterface $configuration
-     * @return string the type of $propertyName in $targetType
+     * @return string|null the type of $propertyName in $targetType
      * @api
      */
     public function getTypeOfChildProperty($targetType, $propertyName, PropertyMappingConfigurationInterface $configuration);
@@ -106,9 +106,9 @@ interface TypeConverterInterface
      * @param string $targetType
      * @param array $convertedChildProperties
      * @param PropertyMappingConfigurationInterface|null $configuration
-     * @return mixed|null|Error the target type, or an error object if a user-error occurred
+     * @return mixed|Error the target type, or an error object if a user-error occurred
      * @throws Exception\TypeConverterException thrown in case a developer error occurred
      * @api
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null);
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null);
 }

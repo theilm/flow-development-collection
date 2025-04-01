@@ -20,11 +20,12 @@ use Psr\Log\LoggerInterface;
  * Implementation of a PSR-7 HTTP stream
  *
  * @api PSR-7
+ * @phpstan-consistent-constructor
  */
 class ContentStream implements StreamInterface
 {
     /**
-     * @var resource
+     * @var resource|null
      */
     protected $resource;
 

@@ -86,7 +86,7 @@ abstract class Files
      * @return array Filenames including full path
      * @api
      */
-    public static function readDirectoryRecursively(string $path, string $suffix = null, bool $returnRealPath = false, bool $returnDotFiles = false): array
+    public static function readDirectoryRecursively(string $path, ?string $suffix = null, bool $returnRealPath = false, bool $returnDotFiles = false): array
     {
         return iterator_to_array(self::getRecursiveDirectoryGenerator($path, $suffix, $returnRealPath, $returnDotFiles));
     }
@@ -99,7 +99,7 @@ abstract class Files
      * @return \Generator
      * @throws FilesException
      */
-    public static function getRecursiveDirectoryGenerator(string $path, string $suffix = null, bool $returnRealPath = false, bool $returnDotFiles = false)
+    public static function getRecursiveDirectoryGenerator(string $path, ?string $suffix = null, bool $returnRealPath = false, bool $returnDotFiles = false)
     {
         if (!is_dir($path)) {
             throw new FilesException('"' . $path . '" is no directory.', 1207253462);
@@ -177,7 +177,7 @@ abstract class Files
      * @api
      * @throws FilesException
      */
-    public static function removeEmptyDirectoriesOnPath(string $path, string $basePath = null)
+    public static function removeEmptyDirectoriesOnPath(string $path, ?string $basePath = null)
     {
         if ($basePath !== null) {
             $basePath = rtrim($basePath, '/');
@@ -190,9 +190,18 @@ abstract class Files
                 break;
             }
             if (file_exists($path . '/.DS_Store')) {
-                @unlink($path . '/.DS_Store');
+                try {
+                    @unlink($path . '/.DS_Store');
+                } catch (\Throwable $e) {
+                    // PHP 8 apparently throws for unlink even with shutup operator, but we really don't care at this place. It's also the only way to handle this race-condition free.
+                }
             }
-            if (@rmdir($path) === false) {
+            try {
+                if (@rmdir($path) === false) {
+                    throw new FilesException(sprintf('Could not remove directory "%s".', $path), 1634928640);
+                }
+            } catch (\Throwable $e) {
+                // PHP 8 throws for rmdir even with a shutup operator set. To ensure the loop gets correctly ended in PHP 8 and below, an additional FilesException is used.
                 break;
             }
             $path = substr($path, 0, -(strlen($currentSegment) + 1));
@@ -243,10 +252,14 @@ abstract class Files
         if (substr($path, -2) === '/.') {
             $path = substr($path, 0, -1);
         }
+        if ($path === '') {
+            return;
+        }
+        clearstatcache(true, $path);
         if (is_file($path)) {
             throw new FilesException('Could not create directory "' . $path . '", because a file with that name exists!', 1349340620);
         }
-        if (!is_link($path) && !is_dir($path) && $path !== '') {
+        if (!is_link($path) && !is_dir($path)) {
             $oldMask = umask(000);
             mkdir($path, 0777, true);
             umask($oldMask);
@@ -307,7 +320,7 @@ abstract class Files
      * @return mixed The file content as a string or false if the file could not be opened.
      * @api
      */
-    public static function getFileContents(string $pathAndFilename, int $flags = 0, $context = null, int $offset = null, int $maximumLength = -1)
+    public static function getFileContents(string $pathAndFilename, int $flags = 0, $context = null, int $offset = 0, int $maximumLength = -1)
     {
         if ($flags === true) {
             $flags = FILE_USE_INCLUDE_PATH;
@@ -431,7 +444,7 @@ abstract class Files
      * @param string $thousandsSeparator thousands separator of the resulting string
      * @return string the size string, e.g. "1,024 MB"
      */
-    public static function bytesToSizeString($bytes, int $decimals = null, string $decimalSeparator = null, string $thousandsSeparator = null): string
+    public static function bytesToSizeString($bytes, ?int $decimals = null, ?string $decimalSeparator = null, ?string $thousandsSeparator = null): string
     {
         if (!is_int($bytes) && !is_float($bytes)) {
             if (is_numeric($bytes)) {

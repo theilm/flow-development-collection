@@ -15,6 +15,7 @@ use Psr\Http\Message\RequestInterface;
 /**
  * Stores detailed information about throwables into files.
  *
+ * @phpstan-consistent-constructor
  * @Flow\Proxy(false)
  * @Flow\Autowiring(false)
  */
@@ -36,6 +37,20 @@ class FileStorage implements ThrowableStorageInterface
     protected $storagePath;
 
     /**
+     * The maximum age of throwable dump in seconds, 0 to disable cleaning based on age
+     *
+     * @var int
+     */
+    protected $maximumThrowableDumpAge = 0;
+
+    /**
+     * The maximum number of throwable dumps to store, 0 to disable cleaning based on count
+     *
+     * @var int
+     */
+    protected $maximumThrowableDumpCount = 0;
+
+    /**
      * Factory method to get an instance.
      *
      * @param array $options
@@ -44,22 +59,28 @@ class FileStorage implements ThrowableStorageInterface
     public static function createWithOptions(array $options): ThrowableStorageInterface
     {
         $storagePath = $options['storagePath'] ?? (FLOW_PATH_DATA . 'Logs/Exceptions');
-        return new static($storagePath);
+        $maximumThrowableDumpAge = $options['maximumThrowableDumpAge'] ?? 0;
+        $maximumThrowableDumpCount = $options['maximumThrowableDumpCount'] ?? 0;
+        return new static($storagePath, $maximumThrowableDumpAge, $maximumThrowableDumpCount);
     }
 
     /**
      * Create new instance.
      *
      * @param string $storagePath
+     * @param int $maximumThrowableDumpAge
+     * @param int $maximumThrowableDumpCount
      * @see createWithOptions
      */
-    public function __construct(string $storagePath)
+    public function __construct(string $storagePath, int $maximumThrowableDumpAge, int $maximumThrowableDumpCount)
     {
         $this->storagePath = $storagePath;
+        $this->maximumThrowableDumpAge = $maximumThrowableDumpAge;
+        $this->maximumThrowableDumpCount = $maximumThrowableDumpCount;
 
         $this->requestInformationRenderer = static function () {
             // The following lines duplicate Scripts::initializeExceptionStorage(), which is a fallback to handle
-            // exceptions that may occure before Scripts::initializeExceptionStorage() has finished.
+            // exceptions that may occur before Scripts::initializeExceptionStorage() has finished.
 
             $output = '';
             if (!(Bootstrap::$staticObjectManager instanceof ObjectManagerInterface)) {
@@ -74,8 +95,7 @@ class FileStorage implements ThrowableStorageInterface
             }
 
             $request = $requestHandler->getHttpRequest();
-            // TODO: Sensible error output
-            $output .= PHP_EOL . 'HTTP REQUEST:' . PHP_EOL . ($request instanceof RequestInterface ? RequestInformationHelper::renderRequestHeaders($request) : '[request was empty]') . PHP_EOL;
+            $output .= PHP_EOL . 'HTTP REQUEST:' . PHP_EOL . ($request instanceof RequestInterface ? RequestInformationHelper::renderRequestInformation($request) : '[request was empty]') . PHP_EOL;
             $output .= PHP_EOL . 'PHP PROCESS:' . PHP_EOL . 'Inode: ' . getmyinode() . PHP_EOL . 'PID: ' . getmypid() . PHP_EOL . 'UID: ' . getmyuid() . PHP_EOL . 'GID: ' . getmygid() . PHP_EOL . 'User: ' . get_current_user() . PHP_EOL;
 
             return $output;
@@ -109,6 +129,13 @@ class FileStorage implements ThrowableStorageInterface
     }
 
     /**
+     * Stores information about the given exception and returns information about
+     * the exception and where the details have been stored. The returned message
+     * can be logged or displayed as needed.
+     *
+     * The returned message follows this pattern:
+     * Exception #<code> in <line> of <file>: <message> - See also: <dumpFilename>
+     *
      * @param \Throwable $throwable
      * @param array $additionalData
      * @return string Informational message about the stored throwable
@@ -122,11 +149,13 @@ class FileStorage implements ThrowableStorageInterface
         }
 
         if (!file_exists($this->storagePath)) {
-            mkdir($this->storagePath);
+            Files::createDirectoryRecursively($this->storagePath);
         }
         if (!file_exists($this->storagePath) || !is_dir($this->storagePath) || !is_writable($this->storagePath)) {
             return sprintf('Could not write exception backtrace into %s because the directory could not be created or is not writable.', $this->storagePath);
         }
+
+        $this->cleanupThrowableDumps();
 
         // FIXME: getReferenceCode should probably become an interface.
         $referenceCode = (is_callable([
@@ -190,11 +219,16 @@ class FileStorage implements ThrowableStorageInterface
      */
     protected function getErrorLogMessage(\Throwable $error)
     {
-        $errorCodeNumber = ($error->getCode() > 0) ? ' #' . $error->getCode() : '';
+        // getCode() does not always return an integer, e.g. in PDOException it can be a string
+        if (is_int($error->getCode()) && $error->getCode() > 0) {
+            $errorCodeString = ' #' . $error->getCode();
+        } else {
+            $errorCodeString = ' [' . $error->getCode() . ']';
+        }
         $backTrace = $error->getTrace();
         $line = isset($backTrace[0]['line']) ? ' in line ' . $backTrace[0]['line'] . ' of ' . $backTrace[0]['file'] : '';
 
-        return 'Exception' . $errorCodeNumber . $line . ': ' . $error->getMessage();
+        return 'Exception' . $errorCodeString . $line . ': ' . $error->getMessage();
     }
 
     /**
@@ -226,5 +260,36 @@ class FileStorage implements ThrowableStorageInterface
         }
 
         return $output;
+    }
+
+    /**
+     * Cleans up existing throwable dumps when they are older than the configured
+     * maximum age or the oldest ones exceeding the maximum number of dumps allowed.
+     */
+    protected function cleanupThrowableDumps(): void
+    {
+        if ($this->maximumThrowableDumpAge > 0) {
+            $cutoffTime = time() - $this->maximumThrowableDumpAge;
+
+            $iterator = new \DirectoryIterator($this->storagePath);
+            foreach ($iterator as $directoryEntry) {
+                if ($directoryEntry->isFile() && $directoryEntry->getCTime() < $cutoffTime) {
+                    unlink($directoryEntry->getRealPath());
+                }
+            }
+        }
+
+        if ($this->maximumThrowableDumpCount > 0) {
+            // this returns alphabetically ordered, so oldest first, as we have a date/time in the name
+            $existingDumps = glob(Files::concatenatePaths([$this->storagePath, '*']));
+            $existingDumpsCount = count($existingDumps);
+            if ($existingDumpsCount > $this->maximumThrowableDumpCount) {
+                $dumpsToRemove = array_slice($existingDumps, 0, $existingDumpsCount - $this->maximumThrowableDumpCount);
+
+                foreach ($dumpsToRemove as $dumpToRemove) {
+                    unlink($dumpToRemove);
+                }
+            }
+        }
     }
 }

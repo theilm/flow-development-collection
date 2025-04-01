@@ -29,7 +29,7 @@ use Neos\Utility\TypeHandling;
 class ScalarTypeToObjectConverter extends AbstractTypeConverter
 {
     /**
-     * @var array
+     * @var array<string>
      */
     protected $sourceTypes = ['string', 'integer', 'float', 'boolean'];
 
@@ -71,7 +71,7 @@ class ScalarTypeToObjectConverter extends AbstractTypeConverter
             return false;
         }
         $methodParameter = array_shift($methodParameters);
-        return TypeHandling::normalizeType($methodParameter['type']) === gettype($source);
+        return TypeHandling::normalizeType($methodParameter['type']) === TypeHandling::normalizeType(gettype($source));
     }
 
     /**
@@ -83,7 +83,7 @@ class ScalarTypeToObjectConverter extends AbstractTypeConverter
      * @param PropertyMappingConfigurationInterface|null $configuration
      * @return object
      */
-    public function convertFrom($source, $targetType, array $convertedChildProperties = [], PropertyMappingConfigurationInterface $configuration = null)
+    public function convertFrom($source, $targetType, array $convertedChildProperties = [], ?PropertyMappingConfigurationInterface $configuration = null)
     {
         return new $targetType($source);
     }

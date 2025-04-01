@@ -447,6 +447,11 @@ class ArrayHelperTest extends \Neos\Flow\Tests\UnitTestCase
             'string keys' => [['foo' => 'bar', 'baz' => 'foo', 'bar' => 'baz'], 42, 'foo', ['foo' => 'bar', 'baz' => 'foo', 'bar' => 'baz', 42, 'foo']],
             'mixed keys' => [['bar', '24' => 'foo', 'i' => 181.84, 'foo' => 'abc', '84216', 76, 'k' => 53], 42, 'foo', ['bar', '24' => 'foo', 'i' => 181.84, 'foo' => 'abc', '84216', 76, 'k' => 53, 42, 'foo']],
             'traversable' => [TestArrayIterator::fromArray(['a']), 'b', 'c', ['a', 'b', 'c']],
+            # expect cast scalar (as arg $array) to array
+            'string' => ['a', 'b', 'c', ['a', 'b', 'c']],
+            'int' => [123, 'b', 'c', [123, 'b', 'c']],
+            # ignore null (as arg $array)
+            'null' => [null, 'b', 'c', ['b', 'c']],
         ];
     }
 
@@ -753,6 +758,15 @@ class ArrayHelperTest extends \Neos\Flow\Tests\UnitTestCase
                 [
                     0 => 'a',
                     2 => 'c',
+                ],
+            ],
+            'test with empty filter function' => [
+                [1,null,2,null,3],
+                null,
+                [
+                    0 => 1,
+                    2 => 2,
+                    4 => 3,
                 ],
             ],
             'traversable' => [

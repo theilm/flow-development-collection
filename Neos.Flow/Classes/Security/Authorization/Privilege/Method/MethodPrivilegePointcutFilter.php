@@ -11,13 +11,13 @@ namespace Neos\Flow\Security\Authorization\Privilege\Method;
  * source code.
  */
 
+use Neos\Cache\Frontend\FrontendInterface;
 use Neos\Flow\Annotations as Flow;
 use Neos\Flow\Aop\Builder\ClassNameIndex;
 use Neos\Flow\Aop\Pointcut\PointcutFilterComposite;
 use Neos\Flow\Aop\Pointcut\PointcutFilterInterface;
 use Neos\Flow\Aop\Pointcut\RuntimeExpressionEvaluator;
 use Neos\Flow\Cache\CacheManager;
-use Neos\Cache\Frontend\VariableFrontend;
 use Neos\Flow\ObjectManagement\ObjectManagerInterface;
 use Neos\Flow\Security\Policy\PolicyService;
 
@@ -39,7 +39,7 @@ class MethodPrivilegePointcutFilter implements PointcutFilterInterface
     protected $methodPermissions = [];
 
     /**
-     * @var VariableFrontend
+     * @var FrontendInterface
      */
     protected $methodPermissionCache;
 
@@ -158,10 +158,10 @@ class MethodPrivilegePointcutFilter implements PointcutFilterInterface
     }
 
     /**
-     * @param $className
-     * @param $methodName
-     * @param $methodDeclaringClassName
-     * @param $pointcutQueryIdentifier
+     * @param string $className
+     * @param string $methodName
+     * @param string $methodDeclaringClassName
+     * @param mixed $pointcutQueryIdentifier
      * @return \Closure
      */
     protected function getFilterEvaluator($className, $methodName, $methodDeclaringClassName, $pointcutQueryIdentifier): \Closure

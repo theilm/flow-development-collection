@@ -32,12 +32,12 @@ use Symfony\Component\Console\Question\Question;
 class ConsoleOutput
 {
     /**
-     * @var SymfonyConsoleOutput
+     * @var OutputInterface
      */
     protected $output;
 
     /**
-     * @var SymfonyStringInput
+     * @var InputInterface
      */
     protected $input;
 
@@ -138,12 +138,16 @@ class ConsoleOutput
      *
      * @param array $rows
      * @param array $headers
+     * @param string $headerTitle
      */
-    public function outputTable(array $rows, array $headers = null): void
+    public function outputTable(array $rows, ?array $headers = null, ?string $headerTitle = null): void
     {
         $table = $this->getTable();
         if ($headers !== null) {
             $table->setHeaders($headers);
+        }
+        if ($headerTitle !== null) {
+            $table->setHeaderTitle($headerTitle);
         }
         $table->setRows($rows);
         $table->render();
@@ -154,13 +158,13 @@ class ConsoleOutput
      *
      * @param string|array $question The question to ask. If an array each array item is turned into one line of a multi-line question
      * @param array $choices List of choices to pick from
-     * @param mixed|null $default The default answer if the user enters nothing
+     * @param string|bool|int|float|null $default The default answer if the user enters nothing
      * @param boolean $multiSelect If true the result will be an array with the selected options. Multiple options can be given separated by commas
      * @param integer|null $attempts Max number of times to ask before giving up (null by default, which means infinite)
      * @return integer|string|array Either the value for indexed arrays, the key for associative arrays or an array for multiple selections
      * @throws \InvalidArgumentException
      */
-    public function select($question, array $choices, $default = null, bool $multiSelect = false, int $attempts = null)
+    public function select($question, array $choices, $default = null, bool $multiSelect = false, ?int $attempts = null)
     {
         $question = new ChoiceQuestion($this->combineQuestion($question), $choices, $default);
         $question
@@ -179,10 +183,22 @@ class ConsoleOutput
      * @return mixed The user answer
      * @throws \RuntimeException If there is no data to read in the input stream
      */
-    public function ask($question, string $default = null)
+    public function ask($question, ?string $default = null)
     {
         $question = new Question($this->combineQuestion($question), $default);
 
+        return $this->getQuestionHelper()->ask($this->input, $this->output, $question);
+    }
+
+    /**
+     * Asks a question to the user
+     *
+     * @param Question $question The question to ask as an Object.
+     * @return mixed The user answer
+     * @throws \RuntimeException If there is no data to read in the input stream
+     */
+    public function askQuestion(Question $question)
+    {
         return $this->getQuestionHelper()->ask($this->input, $this->output, $question);
     }
 
@@ -235,7 +251,7 @@ class ConsoleOutput
      * @return mixed The response
      * @throws \Exception When any of the validators return an error
      */
-    public function askAndValidate($question, callable $validator, int $attempts = null, string $default = null)
+    public function askAndValidate($question, callable $validator, ?int $attempts = null, ?string $default = null)
     {
         $question = new Question($this->combineQuestion($question), $default);
         $question
@@ -260,7 +276,7 @@ class ConsoleOutput
      * @throws \Exception When any of the validators return an error
      * @throws \RuntimeException In case the fallback is deactivated and the response can not be hidden
      */
-    public function askHiddenResponseAndValidate($question, callable $validator, int $attempts = null, bool $fallback = true)
+    public function askHiddenResponseAndValidate($question, callable $validator, ?int $attempts = null, bool $fallback = true)
     {
         $question = new Question($this->combineQuestion($question));
         $question
@@ -275,10 +291,10 @@ class ConsoleOutput
     /**
      * Starts the progress output
      *
-     * @param integer $max Maximum steps. If NULL an indeterminate progress bar is rendered
+     * @param integer|null $max Maximum steps. If NULL an indeterminate progress bar is rendered
      * @return void
      */
-    public function progressStart(int $max = null): void
+    public function progressStart(?int $max = null): void
     {
         $this->getProgressBar()->start($max);
     }
@@ -355,7 +371,7 @@ class ConsoleOutput
      *
      * @return QuestionHelper
      */
-    protected function getQuestionHelper(): QuestionHelper
+    public function getQuestionHelper(): QuestionHelper
     {
         if ($this->questionHelper === null) {
             $this->questionHelper = new QuestionHelper();
@@ -385,7 +401,7 @@ class ConsoleOutput
      *
      * @return ProgressBar
      */
-    protected function getProgressBar(): ProgressBar
+    public function getProgressBar(): ProgressBar
     {
         if ($this->progressBar === null) {
             $this->progressBar = new ProgressBar($this->output);

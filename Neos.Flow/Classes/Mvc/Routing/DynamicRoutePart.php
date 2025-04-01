@@ -65,11 +65,14 @@ class DynamicRoutePart extends AbstractRoutePart implements DynamicRoutePartInte
      *
      * @see matchWithParameters()
      *
-     * @param string $routePath The request path to be matched - without query parameters, host and fragment.
+     * @param string|null $routePath The request path to be matched - without query parameters, host and fragment.
      * @return bool|MatchResult true or an instance of MatchResult if Route Part matched $routePath, otherwise false.
      */
     final public function match(&$routePath)
     {
+        if ($routePath === null) {
+            return false;
+        }
         return $this->matchWithParameters($routePath, RouteParameters::createEmpty());
     }
 
@@ -104,13 +107,13 @@ class DynamicRoutePart extends AbstractRoutePart implements DynamicRoutePartInte
      * If a split string is set, only the first part of the value until location of the splitString is returned.
      * This method can be overridden by custom RoutePartHandlers to implement custom matching mechanisms.
      *
-     * @param string $routePath The request path to be matched
+     * @param string|null $routePath The request path to be matched
      * @return string value to match, or an empty string if $routePath is empty or split string was not found
      * @api
      */
     protected function findValueToMatch($routePath)
     {
-        if (!isset($routePath) || $routePath === '' || $routePath[0] === '/') {
+        if ($routePath === null || $routePath === '' || $routePath[0] === '/') {
             return '';
         }
         $valueToMatch = $routePath;
@@ -201,7 +204,7 @@ class DynamicRoutePart extends AbstractRoutePart implements DynamicRoutePartInte
      * This method can be overridden by custom RoutePartHandlers to implement custom resolving mechanisms.
      *
      * @param array $routeValues An array with key/value pairs to be resolved by Dynamic Route Parts.
-     * @return string|array value to resolve.
+     * @return string|array|null value to resolve.
      * @api
      */
     protected function findValueToResolve(array $routeValues)
@@ -227,7 +230,13 @@ class DynamicRoutePart extends AbstractRoutePart implements DynamicRoutePartInte
             return false;
         }
         if (is_object($value)) {
-            $value = $this->persistenceManager->getIdentifierByObject($value);
+            $identifier = $this->persistenceManager->getIdentifierByObject($value);
+
+            if ($identifier === null && method_exists($value, '__toString')) {
+                $identifier = (string) $value;
+            }
+            $value = $identifier;
+
             if ($value === null || (!is_string($value) && !is_integer($value))) {
                 return false;
             }

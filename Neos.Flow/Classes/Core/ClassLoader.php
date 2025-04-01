@@ -16,7 +16,7 @@ use Neos\Flow\Package;
 use Neos\Utility\Files;
 
 /**
- * Class Loader implementation as fallback to the compoer loader and for test classes.
+ * Class Loader implementation for test classes.
  *
  * @Flow\Proxy(false)
  * @Flow\Scope("singleton")
@@ -171,7 +171,7 @@ class ClassLoader
         foreach ($possiblePaths as $possiblePathData) {
             $possibleFilePath = '';
             if ($possiblePathData['mappingType'] === self::MAPPING_TYPE_PSR0) {
-                $possibleFilePath = $this->buildClassPathWithPsr0($namespaceParts, $possiblePathData['path'], $packageNamespacePartCount);
+                $possibleFilePath = $this->buildClassPathWithPsr0($namespaceParts, $possiblePathData['path']);
             }
             if ($possiblePathData['mappingType'] === self::MAPPING_TYPE_PSR4) {
                 $possibleFilePath = $this->buildClassPathWithPsr4($namespaceParts, $possiblePathData['path'], $packageNamespacePartCount);

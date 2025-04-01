@@ -212,6 +212,11 @@ Neos\Flow\Monitor\FileMonitor:
 #                                                                          #
 # HTTP                                                                     #
 #                                                                          #
+Psr\Http\Client\ClientInterface:
+  className: Neos\Flow\Http\Client\Browser
+
+Neos\Flow\Http\Client\RequestEngineInterface:
+  className: Neos\Flow\Http\Client\CurlEngine
 
 Psr\Http\Message\ServerRequestFactoryInterface:
   className: Neos\Http\Factories\ServerRequestFactory
@@ -251,6 +256,9 @@ Neos\Flow\Http\Middleware\MiddlewaresChain:
 #                                                                          #
 Neos\Flow\Mvc\Routing\RouterInterface:
   className: Neos\Flow\Mvc\Routing\Router
+
+Neos\Flow\Mvc\Routing\RoutesProviderInterface:
+  className: Neos\Flow\Mvc\Routing\ConfigurationRoutesProvider
 
 Neos\Flow\Mvc\Routing\RouterCachingService:
   properties:
@@ -409,6 +417,17 @@ Neos\Flow\Security\Cryptography\BCryptHashingStrategy:
     1:
       setting: Neos.Flow.security.cryptography.BCryptHashingStrategy.cost
 
+Neos\Flow\Security\Cryptography\PrecomposedHashProvider:
+  scope: singleton
+  properties:
+    cache:
+      object:
+        factoryObjectName: Neos\Flow\Cache\CacheManager
+        factoryMethodName: getCache
+        arguments:
+          1:
+            value: Flow_Security_Cryptography_PrecomposedHashProvider
+
 Neos\Flow\Security\Authorization\Privilege\Method\MethodTargetExpressionParser:
   scope: singleton
 
@@ -447,16 +466,9 @@ Neos\Flow\Session\SessionInterface:
   factoryObjectName: Neos\Flow\Session\SessionManagerInterface
   factoryMethodName: getCurrentSession
 
-Neos\Flow\Session\Session:
+Neos\Flow\Session\Data\SessionKeyValueStore:
   properties:
-    metaDataCache:
-      object:
-        factoryObjectName: Neos\Flow\Cache\CacheManager
-        factoryMethodName: getCache
-        arguments:
-          1:
-            value: Flow_Session_MetaData
-    storageCache:
+    cache:
       object:
         factoryObjectName: Neos\Flow\Cache\CacheManager
         factoryMethodName: getCache
@@ -464,12 +476,9 @@ Neos\Flow\Session\Session:
           1:
             value: Flow_Session_Storage
 
-Neos\Flow\Session\SessionManagerInterface:
-  className: Neos\Flow\Session\SessionManager
-
-Neos\Flow\Session\SessionManager:
+Neos\Flow\Session\Data\SessionMetaDataStore:
   properties:
-    metaDataCache:
+    cache:
       object:
         factoryObjectName: Neos\Flow\Cache\CacheManager
         factoryMethodName: getCache

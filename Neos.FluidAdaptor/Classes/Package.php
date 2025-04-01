@@ -42,16 +42,12 @@ class Package extends BasePackage
 
         $context = $bootstrap->getContext();
         if (!$context->isProduction()) {
-            $dispatcher->connect(Sequence::class, 'afterInvokeStep', function ($step) use ($bootstrap, $dispatcher) {
+            $dispatcher->connect(Sequence::class, 'afterInvokeStep', function ($step) use ($bootstrap) {
                 if ($step->getIdentifier() === 'neos.flow:systemfilemonitor') {
                     $templateFileMonitor = FileMonitor::createFileMonitorAtBoot('Fluid_TemplateFiles', $bootstrap);
                     $packageManager = $bootstrap->getEarlyInstance(PackageManager::class);
                     /** @var FlowPackageInterface $package */
                     foreach ($packageManager->getFlowPackages() as $packageKey => $package) {
-                        if ($packageManager->isPackageFrozen($packageKey)) {
-                            continue;
-                        }
-
                         foreach (['Templates', 'Partials', 'Layouts'] as $path) {
                             $templatesPath = $package->getResourcesPath() . 'Private/' . $path;
 
